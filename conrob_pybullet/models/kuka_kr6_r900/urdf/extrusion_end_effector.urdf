@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<robot name="extrusion_end_effector" xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <link name="eef_base_link">
+    <visual>
+      <origin rpy="0 0 0" xyz="8.8e-05 0.000769 -0.002121"/>
+      <geometry>
+        <mesh filename="../meshes/asw_end_effector/visual/asw_hotend_end_effector.stl" scale=".001 .001 .001"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="8.8e-05 0.000769 -0.002121"/>
+      <geometry>
+        <mesh filename="../meshes/asw_end_effector/collision/asw_hotend_end_effector_shrinked_tip-4mm.stl" scale=".001 .001 .001"/>
+      </geometry>
+      <material name="red">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </collision>
+  </link>
+  <link name="eef_tcp_frame"/>
+  <!-- end of link list -->
+
+  <!-- joint list -->
+  <joint name="eef_base_to_tcp" type="fixed">
+    <origin rpy="0.0 1.57079632679 0.0" xyz="0.150539 0.001052 0.119157"/>
+    <parent link="eef_base_link"/>
+    <child link="eef_tcp_frame"/>
+  </joint>
+
+</robot>

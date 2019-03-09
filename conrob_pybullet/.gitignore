@@ -1,0 +1,14 @@
+.idea
+**/*.pyc
+temp
+visualizations
+statistics
+gurobi.log
+
+# some OSX/vim tmp stuff
+**/.DS_Store
+**~
+**/*.swp
+**/*.~un
+
+*.ipynb_checkpoints/
