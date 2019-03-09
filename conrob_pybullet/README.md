@@ -33,5 +33,5 @@ For other robots, replace `kuka_kr6_r900` with the following supported robots:
 
 2. Testing new IKFast modules
 
-* `$ python -m conrob_pybullet.debug_examples.test_eth_rfl_pick.py`
-* `$ python -m conrob_pybullet.debug_examples.test_irb6600_track_pick.py`
+* `$ python -m debug_examples.test_eth_rfl_pick.py`
+* `$ python -m debug_examples.test_irb6600_track_pick.py`

@@ -7,13 +7,13 @@ from itertools import product
 import json
 from collections import OrderedDict, namedtuple
 
-from examples.pybullet.utils.pybullet_tools.utils import add_line, Euler, \
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
     tform_point
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
-END_EFFECTOR_PATH = '../models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
+END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
 EE_TOOL_BASE_LINK = 'eef_base_link'
 EE_TOOL_TIP = 'eef_tcp_frame'
 

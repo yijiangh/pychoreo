@@ -7,7 +7,7 @@ from .choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_
 
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 from assembly_datastructure import AssemblyNetwork
-from examples.pybullet.utils.pybullet_tools.utils import Pose, get_movable_joints, multiply
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, get_movable_joints, multiply
 from choreo.extrusion_utils import get_disabled_collisions
 
 DEBUG=True

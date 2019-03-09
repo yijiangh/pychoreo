@@ -8,7 +8,7 @@ from copy import copy
 
 import pybullet as p
 
-from ss-pybullet.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, LockRenderer, \
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, get_collision_fn
 
