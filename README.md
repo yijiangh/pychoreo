@@ -35,11 +35,23 @@ For other robots, replace `kuka_kr6_r900` with the following supported robots:
 
 2. Testing new IKFast modules
 
-* `$ python -m conrob_pybullet.debug_examples.test_eth_rfl_pick
-* `$ python -m conrob_pybullet.debug_examples.test_irb6600_track_pick
+* `$ python -m conrob_pybullet.debug_examples.test_eth_rfl_pick`
+* `$ python -m conrob_pybullet.debug_examples.test_irb6600_track_pick`
 
 ## Examples
 
 * `$ python -m choreo.run`
 
+## Citation
 
+If you use this work, please consider citing the following work:
+
+  @article{huang2018automated,
+  title={Automated sequence and motion planning for robotic spatial extrusion of 3D trusses},
+  author={Huang, Yijiang and Garrett, Caelan R and Mueller, Caitlin T},
+  journal={Construction Robotics},
+  pages={15--39},
+  year={2018},
+  publisher={Springer}}
+
+Or [arxiv:1810.00998](https://arxiv.org/abs/1810.00998).
