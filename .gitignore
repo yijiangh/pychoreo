@@ -12,3 +12,6 @@ gurobi.log
 **/*.~un
 
 *.ipynb_checkpoints/
+
+choreo/csp_log/*
+choreo/results/*

@@ -5,6 +5,7 @@ import pstats
 import numpy as np
 import argparse
 from copy import copy
+import time, sys
 
 import pybullet as p
 
@@ -26,6 +27,7 @@ from .sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
 
 DEBUG = True
 SELF_COLLISIONS = False
+LOG_CSP = True
 
 # constraint fn placeholder
 def always_false_constraint_fn(A, a, B, b):
@@ -52,6 +54,7 @@ class AssemblyCSP(CSP):
         CSP.__init__(self, variables=list(range(n)), domains=decomposed_domains,
                      neighbors=UniversalDict(list(range(n))), constraints=always_false_constraint_fn)
 
+        self.start_time = time.time()
         self.robot = robot
         self.disabled_collisions = get_disabled_collisions(robot)
         self.obstacles = obstacles
@@ -109,8 +112,7 @@ class AssemblyCSP(CSP):
                     if k == var:
                         continue
                     exist_e_id = assignment[k]
-                    val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles,
-                                                    check_ik=False)
+                    val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
                     if sum(val_cmap) == 0:
                         return False
 
@@ -184,14 +186,32 @@ class AssemblyCSP(CSP):
                 assert(len(self.cmaps[e_id]) == len(free_mask))
                 self.cmaps[e_id] = self.cmaps[e_id] + free_mask
 
-    # this is for layer decomposition (domain shrinking)
-    def set_layer_stage(self, layer_id, assignment):
-        """update the domain, constraint checkers based on current layer id"""
-        # self.variables = range(assignment.largest var + 1, len(element_group_ids[layer_id]))
-        # self.domains = for each var in variblaes, intersect(curr_domain[e], curr layer ids)
+    def write_csp_log(self, file_name):
+        import os
+        from collections import OrderedDict
+        import json
 
-        # set constraint checker to regard previous layers' element as existing & collision
-        pass
+        root_directory = os.path.dirname(os.path.abspath(__file__))
+        file_dir = os.path.join(root_directory, 'csp_log')
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+        file_path = os.path.join(file_dir, file_name + '_csp_log' + '.json')
+        if not os.path.exists(file_path):
+            open(file_path, "w+").close()
+
+        data = OrderedDict()
+        data['assembly_type'] = 'extrusion'
+        data['file_name'] = file_name
+        data['element_number'] = self.net.get_size_of_elements()
+        data['support_number'] = self.net.get_size_of_grounded_elements()
+
+        data['number_assigns'] = self.nassigns
+        data['number_backtracks'] = self.nbacktrackings
+        data['assign_history'] = self.log_assigns
+	data['solve_time_util_stop'] = time.time() - self.start_time
+
+        with open(file_path, 'w') as outfile:
+            json.dump(data, outfile, indent=4)
 
 # variable ordering
 def next_variable_in_sequence(assignment, csp):
@@ -217,7 +237,7 @@ def cmaps_forward_check(csp, var, value, assignment, removals):
             return False
     return True
 
-def plan_sequence(robot, obstacles, assembly_network):
+def plan_sequence(robot, obstacles, assembly_network, file_name=None):
     pr = cProfile.Profile()
     pr.enable()
 
@@ -233,10 +253,19 @@ def plan_sequence(robot, obstacles, assembly_network):
 
     # generate AssemblyCSP problem
     csp = AssemblyCSP(robot, obstacles, assembly_network=assembly_network)
-    seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+    csp.logging = LOG_CSP
+
+    try:
+        seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
                         order_domain_values=cmaps_value_ordering,
                         inference=cmaps_forward_check)
-    print(seq)
+    except KeyboardInterrupt:
+        if csp.logging and file_name:
+            csp.write_csp_log(file_name)
+
+        pr.disable()
+        pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+        sys.exit()
 
     pr.disable()
     pstats.Stats(pr).sort_stats('tottime').print_stats(10)
@@ -253,7 +282,8 @@ def plan_sequence(robot, obstacles, assembly_network):
                 seq_poses[i].append(EEDirection(phi=phi, theta=theta))
 
     remove_body(csp.ee_body)
-    # TODO: do cmaps -> pose translation here
+    if csp.logging and file_name:
+        csp.write_csp_log(file_name)
 
     return seq, seq_poses
 
@@ -340,7 +370,7 @@ def main(precompute=False):
     use_seq_existing_plan = args.parse_seq
     if not use_seq_existing_plan:
         with LockRenderer():
-            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network)
+            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network, args.problem)
         write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
         element_seq, seq_poses = read_seq_json(args.problem)
@@ -365,13 +395,13 @@ def main(precompute=False):
 
     trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
 
-    disconnect()
-    display_trajectories(assembly_network, trajectories)
+    if args.viewer:
+       disconnect()
+       display_trajectories(assembly_network, trajectories)
 
-    print('Quit?')
-    if has_gui():
-        wait_for_interrupt()
-    # display_trajectories(ground_nodes, plan)
+       print('Quit?')
+       if has_gui():
+           wait_for_interrupt()
 
 if __name__ == '__main__':
     main()
