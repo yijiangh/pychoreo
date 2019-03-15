@@ -16,7 +16,7 @@ EXTRUSION_FILENAMES = {
     'djmm_test_block': 'djmm_test_block_S1.0_09-17-2018.json',
     'mars_bubble': 'mars_bubble_S1.0_09-17-2018.json',
     'sig_artopt-bunny': 'sig_artopt-bunny_S1.0_09-17-2018.json',
-    'topopt-100': 'topopt-100_S1.0_09-17-2018.json',
+    'topopt-100': 'topopt-100_S1_03-14-2019.json', # 'topopt-100_S1.0_09-17-2018.json',
     'topopt-205': 'topopt-205_S0.7_09-17-2018.json',
     'topopt-310': 'topopt-310_S1.0_09-17-2018.json',
     'voronoi': 'voronoi_S1.0_09-05-2018.json',
