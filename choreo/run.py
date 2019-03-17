@@ -18,13 +18,14 @@ from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
 from .assembly_datastructure import AssemblyNetwork
 from .csp import backtracking_search
-from .forward_assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check
+from .assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
+    traversal_to_ground_value_ordering
 from .choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection
 from .sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
 
 LOG_CSP = True
 
-def plan_sequence(robot, obstacles, assembly_network, file_name=None):
+def plan_sequence(robot, obstacles, assembly_network, search_method='backward', file_name=None):
     pr = cProfile.Profile()
     pr.enable()
 
@@ -43,9 +44,13 @@ def plan_sequence(robot, obstacles, assembly_network, file_name=None):
     csp.logging = LOG_CSP
 
     try:
-        seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
-                        order_domain_values=cmaps_value_ordering,
-                        inference=cmaps_forward_check)
+        if search_method == 'forward':
+            seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                           order_domain_values=cmaps_value_ordering,
+                                           inference=cmaps_forward_check)
+        elif search_method == 'backward':
+            seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                           order_domain_values=traversal_to_ground_value_ordering)
     except KeyboardInterrupt:
         if csp.logging and file_name:
             csp.write_csp_log(file_name)
@@ -54,8 +59,10 @@ def plan_sequence(robot, obstacles, assembly_network, file_name=None):
         pstats.Stats(pr).sort_stats('tottime').print_stats(10)
         sys.exit()
 
-    pr.disable()
-    pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+    # pr.disable()
+    # pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+
+    print(seq)
 
     seq_poses = {}
     for i in seq.keys():
@@ -141,11 +148,6 @@ def main(precompute=False):
     camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
     target_camera_pt = node_points[0]
 
-    if has_gui():
-        pline_handle = draw_model(elements, node_points, ground_nodes)
-        set_camera_pose(tuple(camera_pt), target_camera_pt)
-       # wait_for_interrupt('Continue?')
-
     # create collision bodies
     bodies = create_elements(node_points, [tuple(e.node_ids) for e in elements])
     for e, b in zip(elements, bodies):
@@ -153,11 +155,17 @@ def main(precompute=False):
         # draw_pose(get_pose(b), length=0.004)
 
     assembly_network = AssemblyNetwork(node_points, elements, ground_nodes)
+    assembly_network.compute_traversal_to_ground_dist()
+
+    if has_gui():
+        pline_handle = draw_model(assembly_network, draw_tags=True)
+        set_camera_pose(tuple(camera_pt), target_camera_pt)
+        wait_for_interrupt('Continue?')
 
     use_seq_existing_plan = args.parse_seq
     if not use_seq_existing_plan:
         with LockRenderer():
-            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network, args.problem)
+            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network, file_name=args.problem)
         write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
         element_seq, seq_poses = read_seq_json(args.problem)

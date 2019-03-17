@@ -10,7 +10,8 @@ from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 from .assembly_datastructure import AssemblyNetwork
 from .csp import CSP, UniversalDict
 from .csp_utils import count
-from .choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector
+from .choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector, check_exist_valid_kinematics, \
+    update_collision_map_batch
 
 SELF_COLLISIONS = False
 
@@ -24,12 +25,19 @@ class AssemblyCSP(CSP):
     needs to keep track of a feasible direction map for each domain value (element_id)
 
     """
-    def __init__(self, robot=None, obstacles=[], assembly_network=None):
+    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method='backward'):
+        self.search_method = search_method
+
         assert(isinstance(assembly_network, AssemblyNetwork))
         n = assembly_network.get_size_of_elements()
         decomposed_domains = {}
         layer_ids = assembly_network.get_layers()
-        layer_ids.sort()
+
+        if self.search_method == 'forward':
+            layer_ids.sort()
+        if self.search_method == 'backward':
+            layer_ids.sort(reverse=True)
+
         for l_id in layer_ids:
             l_e_ids = assembly_network.get_layer_element_ids(l_id)
             prev_e_num = len(decomposed_domains)
@@ -62,11 +70,16 @@ class AssemblyCSP(CSP):
             return len(assignment.values()) == len(set(assignment.values()))
 
         def connect(self, var, val, assignment):
-            # if var not in assignment.keys():
-            #     if len(assignment) is not 0: assert(var == max(assignment.keys())+1)
             ngbh_e_ids = self.net.get_element_neighbor(val)
-            return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
-                       or self.net.is_element_grounded(val)
+
+            if self.search_method == 'forward':
+                return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
+                          or self.net.is_element_grounded(val)
+            if self.search_method == 'backward':
+                unassigned_vars = list(set(self.variables).difference(assignment.keys()))
+                return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
+                    or any(self.net.is_element_grounded(unass_val) for unass_val in unassigned_vars)
+
             # else:
             #     return True
 
@@ -84,31 +97,44 @@ class AssemblyCSP(CSP):
             if sum(self.cmaps[val]) == 0:
                 return False
             else:
-                # built_obstacles = self.obstacles + [self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var]
+                val_cmap = copy(self.cmaps[val])
+                built_obstacles = self.obstacles
+
+                # forward search
+                if self.search_method == 'forward':
+                    built_obstacles.extend([self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var])
+                    # check against all existing edges except itself
+                    for k in assignment.keys():
+                        if k == var:
+                            continue
+                        exist_e_id = assignment[k]
+                        val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
+                        if sum(val_cmap) == 0:
+                            return False
 
                 # backward search
-                built_obstacles = self.obstacles + [self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var]
-                collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
-                                        attachments=[], self_collisions=SELF_COLLISIONS,
-                                        disabled_collisions=self.disabled_collisions,
-                                        custom_limits={})
-                val_cmap = copy(self.cmaps[val])
+                if self.search_method == 'backward':
+                    # all unassigned values are assumed to be collision objects
+                    # TODO: only check current layer's value?
+                    unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
+                    built_obstacles.extend([self.net.get_element_body(unass_val) for unass_val in unassigned_vals])
 
-                # check against all existing edges except itself
-                for k in assignment.keys():
-                    if k == var:
-                        continue
-                    exist_e_id = assignment[k]
-                    val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
+                    val_cmap = update_collision_map_batch(self.net, self.ee_body, val, val_cmap, built_obstacles)
                     if sum(val_cmap) == 0:
                         return False
 
+                # collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+                #                                 attachments=[], self_collisions=SELF_COLLISIONS,
+                #                                 disabled_collisions=self.disabled_collisions,
+                #                                 custom_limits={})
                 # return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
                 return True
 
         constraint_fns = [alldiff, connect, exist_valid_ee_pose]
 
-        _nconflicts = count(not fn(self, var, val, assignment) for fn in constraint_fns)
+        violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
+        print('constraint violation: {}'.format(violation))
+        _nconflicts = count(violation)
         return _nconflicts
 
     def goal_test(self, state):
@@ -130,19 +156,20 @@ class AssemblyCSP(CSP):
 
         assert(var is not None and value is not None and assignment is not None)
 
-        # this is checking against the future
-        unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
-        if len(assignment.values()) == 1:
-            # prune the first one against the static obstacles
-            unassigned_vals.append(assignment[0])
+        if self.search_method == 'forward':
+            unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
+            if len(assignment.values()) == 1:
+                # prune the first one against the static obstacles
+                unassigned_vals.append(assignment[0])
 
-        # TODO: only check vals in the same layer
-        for u_val in unassigned_vals:
-            old_cmap = copy(self.cmaps[u_val])
-            self.cmaps[u_val] = \
-                update_collision_map(self.net, self.ee_body, u_val, value, self.cmaps[u_val], self.obstacles, check_ik=False)
-            if sum(map(abs, old_cmap - self.cmaps[u_val])) != 0:
-                removals['cmaps'][u_val] = old_cmap - self.cmaps[u_val]
+            # this is checking against the unprinted elements
+            # TODO: only check vals in the same layer
+            for u_val in unassigned_vals:
+                old_cmap = copy(self.cmaps[u_val])
+                self.cmaps[u_val] = \
+                    update_collision_map(self.net, self.ee_body, u_val, value, self.cmaps[u_val], self.obstacles, check_ik=False)
+                if sum(map(abs, old_cmap - self.cmaps[u_val])) != 0:
+                    removals['cmaps'][u_val] = old_cmap - self.cmaps[u_val]
 
         return removals
 
@@ -153,10 +180,11 @@ class AssemblyCSP(CSP):
         removals['domain'].extend([(var, a) for a in self.curr_domains[var] if a != value])
         self.curr_domains[var] = [value]
 
+        # alldiff
         unassigned_vars = list(set(self.variables).difference(assignment.keys()))
         for u_var in unassigned_vars:
             if value in self.curr_domains[u_var]:
-                self.curr_domains[u_var].remove(value) # list(set(self.domains[u_var]).difference([value]))
+                self.curr_domains[u_var].remove(value)
                 removals['domain'].append((u_var, value))
 
         return removals
@@ -206,17 +234,23 @@ def next_variable_in_sequence(assignment, csp):
     if len(assignment)>0:
         return max(assignment.keys())+1
     else:
-        # randomly
-        # TODO: find a grounded element
         return 0
 
 # value ordering
+# --- used in forward search
 # choose value with min cmap sum
 def cmaps_value_ordering(var, assignment, csp):
-    cur_vals =  csp.choices(var)
+    cur_vals = csp.choices(var)
     return sorted(cur_vals, key=lambda val: sum(csp.cmaps[val]))
 
+# --- used in backward search
+def traversal_to_ground_value_ordering(var, assignment, csp):
+    # compute graph traversal distance to the ground
+    cur_vals = csp.choices(var)
+    return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val))
+
 # inference
+# used in forward search
 def cmaps_forward_check(csp, var, value, assignment, removals):
     """check any unprinted e's cmap sum = 0"""
     unassigned_vals = list(set(range(len(csp.variables))).difference(assignment.values()))

@@ -67,11 +67,16 @@ def draw_element(node_points, element, color=(1, 0, 0)):
 def is_ground(element, ground_nodes):
     return any(n in ground_nodes for n in element.node_ids)
 
-def draw_model(elements, node_points, ground_nodes):
+def draw_model(assembly_network, draw_tags=False):
     handles = []
-    for element in elements:
-        color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
-        handles.append(draw_element(node_points, element, color=color))
+    for element in assembly_network.assembly_elements.values():
+        color = (0, 0, 1) if assembly_network.is_element_grounded(element.e_id) else (1, 0, 0)
+        p1, p2 = assembly_network.get_end_points(element.e_id)
+        handles.append(add_line(p1, p2, color=tuple(color)))
+        if draw_tags:
+            e_mid = (np.array(p1) + np.array(p2)) / 2
+            handles.append(add_text('g_dist=' + str(element.to_ground_dist), position=e_mid, text_size=1))
+
     return handles
 
 def load_end_effector():
@@ -228,6 +233,29 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
                     if not check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
                         print_along_cmap[i] = 0
 
+            # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
+
+    return print_along_cmap
+
+def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap, bodies=[]):
+    """
+    :param print_along_e_id: element id that end effector is printing along
+    :param exist_e_id: element that is assumed printed, checked against
+    :param print_along_cmap: print_along_element's collsion map, a list of bool,
+        entry = 1 means collision-free (still available),  entry=0 means not feasible
+    :return:
+    """
+    assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
+    p1, p2 = assembly_network.get_end_points(print_along_e_id)
+    way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
+
+    cmap_ids = list(range(len(print_along_cmap)))
+    random.shuffle(cmap_ids)
+    for i in cmap_ids:
+        if print_along_cmap[i] == 1:
+            phi, theta = cmap_id2angle(i)
+            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies):
+                print_along_cmap[i] = 0
             # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
 
     return print_along_cmap

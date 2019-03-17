@@ -5,7 +5,7 @@ from .csp_utils import argmin_random_tie, count, first
 import copy
 import random
 
-DEBUG=True
+DEBUG = False
 
 # util fn for shared domain
 class UniversalDict:
@@ -268,17 +268,17 @@ def backtracking_search(csp,
                         inference=no_inference):
 
     def backtrack(assignment):
-        if DEBUG:
+        # if DEBUG:
             # raw_input("deeper search: ")
-            print('assignment len:{}'.format(len(assignment)))
+        print('assignment len:{}'.format(len(assignment)))
         if len(assignment) == len(csp.variables):
             return assignment
         var = select_unassigned_variable(assignment, csp)
 
         for value in order_domain_values(var, assignment, csp):
-            # if DEBUG:
-            #     print('lets try: var:{0} - val:{1}'.format(var, value))
-            #     print('current assign: {}'.format(assignment))
+            if DEBUG:
+                print('lets try: var:{0} - val:{1}'.format(var, value))
+                print('current assign: {}'.format(assignment))
             if 0 == csp.nconflicts(var, value, assignment):
                 csp.assign(var, value, assignment)
                 if csp.logging:
@@ -289,16 +289,20 @@ def backtracking_search(csp,
                 #     print('assignment{}:'.format(assignment))
 
                 removals = csp.suppose(var, value, assignment)
-                # if DEBUG:
-                #     print('removal domain:{}'.format(removals['domain']))
-                #     print('removal cmap:{}'.format([(k, str(sum(removals['cmaps'][k]))) for k in removals['cmaps'].keys()]))
-                #     unassigned_vars, unassigned_vals = get_unassigned(csp.variables, csp.domains[0], assignment)
-                #     for tmp_var in unassigned_vars:
-                #         print('unassigned variable #{0} cur_domain: {1}'.format(tmp_var, csp.curr_domains[tmp_var]))
-                #     for tmp_val in unassigned_vals:
-                #         print('unassigned value {0} cmap: {1}'.format(tmp_val, sum(csp.cmaps[tmp_val])))
-                #     print('go deeper!')
-                #     print('================')
+                if DEBUG:
+                    print('removal domain:{}'.format(removals['domain']))
+                    print('removal cmap:{}'.format([(k, str(sum(removals['cmaps'][k]))) for k in removals['cmaps'].keys()]))
+
+                    # for k in assignment.keys():
+                        # print('assigned cmap:{}'.format((k, str(sum(csp.cmaps[k])))))
+
+                    unassigned_vars, unassigned_vals = get_unassigned(csp.variables, csp.domains[0], assignment)
+                    for tmp_var in unassigned_vars:
+                        print('unassigned variable #{0} cur_domain: {1}'.format(tmp_var, csp.curr_domains[tmp_var]))
+                    for tmp_val in unassigned_vals:
+                        print('unassigned value {0} cmap: {1}'.format(tmp_val, sum(csp.cmaps[tmp_val])))
+                    print('go deeper!')
+                    print('================')
 
                 if inference(csp, var, value, assignment, removals):
                     result = backtrack(assignment)
@@ -306,18 +310,18 @@ def backtracking_search(csp,
                         return result
 
                 csp.restore(removals)
-                # if DEBUG:
-                #     print('after removal:')
-                #     for tmp_var in unassigned_vars:
-                #         print('unassigned variable #{0} cur_domain: {1}'.format(tmp_var, csp.curr_domains[tmp_var]))
-                #     for tmp_val in unassigned_vals:
-                #         print('unassigned value {0} cmap: {1}'.format(tmp_val, sum(csp.cmaps[tmp_val])))
-                #     print('try next value...')
-                #     print('****************')
+                if DEBUG:
+                    print('after removal:')
+                    for tmp_var in unassigned_vars:
+                        print('unassigned variable #{0} cur_domain: {1}'.format(tmp_var, csp.curr_domains[tmp_var]))
+                    for tmp_val in unassigned_vals:
+                        print('unassigned value {0} cmap: {1}'.format(tmp_val, sum(csp.cmaps[tmp_val])))
+                    print('try next value...')
+                    print('****************')
 
         csp.unassign(var, assignment)
         csp.nbacktrackings += 1
-        # if DEBUG: print('not result found, backtrack')
+        if DEBUG: print('not result found, backtrack')
         return None
 
     result = backtrack({})
