@@ -11,6 +11,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
     tform_point
+# from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
 END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
@@ -155,9 +156,11 @@ def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disa
 
 def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[]):
     ee_yaw = sample_ee_yaw()
+    ee_tip_from_base = get_tip_from_ee_base(ee_body)
+    print_orientation = make_print_pose(phi, theta, ee_yaw)
+
     for way_pt in way_points:
-        ee_tip_from_base = get_tip_from_ee_base(ee_body)
-        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), make_print_pose(phi, theta, ee_yaw))
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
         set_pose(ee_body, world_from_ee_base)
         if exist_e_body:
@@ -170,8 +173,9 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
 
 def check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
     ee_yaw = sample_ee_yaw()
+    print_orientation = make_print_pose(phi, theta, ee_yaw)
     for way_pt in way_points:
-        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), make_print_pose(phi, theta, ee_yaw))
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         conf = sample_tool_ik(robot, world_from_ee_tip)
         if not conf or collision_fn(conf):
             # conf not exist or collision
@@ -250,7 +254,7 @@ def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, prin
     way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
 
     cmap_ids = list(range(len(print_along_cmap)))
-    random.shuffle(cmap_ids)
+    # random.shuffle(cmap_ids)
     for i in cmap_ids:
         if print_along_cmap[i] == 1:
             phi, theta = cmap_id2angle(i)
@@ -290,6 +294,67 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
                 # handles.append(draw_pose(cmap_pose, direction_len))
 
         time.sleep(time_step)
+
+def set_cmaps_using_seq(seq, csp):
+    # assert(isinstance(csp, AssemblyCSP))
+    built_obstacles = csp.obstacles
+    for i in seq.keys():
+        # val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
+        check_e_id = seq[i]
+        val_cmap = csp.cmaps[check_e_id]
+        print('------')
+        print('prune seq #{0} - e{1}'.format(i, check_e_id))
+        print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+        # print('obstables: {}'.format(built_obstacles))
+        csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
+                                                           print_along_e_id=check_e_id, print_along_cmap=val_cmap,
+                                                           bodies=built_obstacles)
+        print('remaining feasible directions: {}'.format(sum(csp.cmaps[check_e_id])))
+        built_obstacles = built_obstacles + [csp.net.get_element_body(check_e_id)]
+    return csp
+
+def check_and_draw_ee_collision(robot, static_obstacles, assembly_network, exist_element_id, check_e_id,
+                                line_width=10, text_size=1, direction_len=0.005):
+    ee_body = load_end_effector()
+    val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
+    built_obstacles = static_obstacles
+    built_obstacles = built_obstacles + [assembly_network.get_element_body(exist_e_id) for exist_e_id in exist_element_id]
+
+    print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+    print('checking print #{} collision against: '.format(check_e_id))
+    print(sorted(exist_element_id))
+    print('obstables: {}'.format(built_obstacles))
+    val_cmap = update_collision_map_batch(assembly_network, ee_body,
+                                          print_along_e_id=check_e_id, print_along_cmap=val_cmap, bodies=built_obstacles)
+    print('remaining feasible directions: {}'.format(sum(val_cmap)))
+
+    # collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+    #                                 attachments=[], self_collisions=SELF_COLLISIONS,
+    #                                 disabled_collisions=self.disabled_collisions,
+    #                                 custom_limits={})
+    # return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+
+    # drawing
+    handles = []
+    for e_id in exist_element_id:
+        p1, p2 = assembly_network.get_end_points(e_id)
+        handles.append(add_line(p1, p2, color=np.array([0, 0, 1]), width=line_width))
+
+    p1, p2 = assembly_network.get_end_points(check_e_id)
+    e_mid = (np.array(p1) + np.array(p2)) / 2
+    handles.append(add_line(p1, p2, color=np.array([0, 0, 1]), width=line_width))
+
+    for i in range(len(val_cmap)):
+        if val_cmap[i] == 1:
+            phi, theta = cmap_id2angle(i)
+            cmap_pose = multiply(Pose(point=e_mid), make_print_pose(phi, theta))
+            origin_world = tform_point(cmap_pose, np.zeros(3))
+            axis = np.zeros(3)
+            axis[2] = 1
+            axis_world = tform_point(cmap_pose, direction_len*axis)
+            handles.append(add_line(origin_world, axis_world, color=axis))
+            # handles.append(draw_pose(cmap_pose, direction_len))
+
 
 def write_seq_json(assembly_network, element_seq, seq_poses, file_name):
     root_directory = os.path.dirname(os.path.abspath(__file__))

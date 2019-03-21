@@ -25,7 +25,7 @@ class AssemblyCSP(CSP):
     needs to keep track of a feasible direction map for each domain value (element_id)
 
     """
-    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method='backward'):
+    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method=None):
         self.search_method = search_method
 
         assert(isinstance(assembly_network, AssemblyNetwork))
@@ -33,6 +33,7 @@ class AssemblyCSP(CSP):
         decomposed_domains = {}
         layer_ids = assembly_network.get_layers()
 
+        assert(search_method)
         if self.search_method == 'forward':
             layer_ids.sort()
         if self.search_method == 'backward':
@@ -102,7 +103,7 @@ class AssemblyCSP(CSP):
 
                 # forward search
                 if self.search_method == 'forward':
-                    built_obstacles.extend([self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var])
+                    built_obstacles = built_obstacles + [self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var]
                     # check against all existing edges except itself
                     for k in assignment.keys():
                         if k == var:
@@ -111,29 +112,41 @@ class AssemblyCSP(CSP):
                         val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
                         if sum(val_cmap) == 0:
                             return False
-
                 # backward search
-                if self.search_method == 'backward':
+                elif self.search_method == 'backward':
                     # all unassigned values are assumed to be collision objects
                     # TODO: only check current layer's value?
+                    # TODO: these set difference stuff should use domain value
                     unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
-                    built_obstacles.extend([self.net.get_element_body(unass_val) for unass_val in unassigned_vals])
 
-                    val_cmap = update_collision_map_batch(self.net, self.ee_body, val, val_cmap, built_obstacles)
+                    # everytime we start fresh
+                    # val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
+
+                    # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+                    # print('checking print #{} collision against: '.format(val))
+                    # print(sorted(unassigned_vals))
+                    # print('static obstables: {}'.format(built_obstacles))
+
+                    built_obstacles = built_obstacles + [self.net.get_element_body(unass_val) for unass_val in unassigned_vals]
+                    val_cmap = update_collision_map_batch(self.net, self.ee_body,
+                                                          print_along_e_id=val, print_along_cmap=val_cmap, bodies=built_obstacles)
+
+                    # print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
+
                     if sum(val_cmap) == 0:
                         return False
 
-                # collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
-                #                                 attachments=[], self_collisions=SELF_COLLISIONS,
-                #                                 disabled_collisions=self.disabled_collisions,
-                #                                 custom_limits={})
-                # return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
-                return True
+                collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+                                                attachments=[], self_collisions=SELF_COLLISIONS,
+                                                disabled_collisions=self.disabled_collisions,
+                                                custom_limits={})
+                return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+                # return True
 
         constraint_fns = [alldiff, connect, exist_valid_ee_pose]
 
         violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
-        print('constraint violation: {}'.format(violation))
+        # print('constraint violation: {}'.format(violation))
         _nconflicts = count(violation)
         return _nconflicts
 
@@ -202,16 +215,20 @@ class AssemblyCSP(CSP):
                 assert(len(self.cmaps[e_id]) == len(free_mask))
                 self.cmaps[e_id] = self.cmaps[e_id] + free_mask
 
-    def write_csp_log(self, file_name):
+    def write_csp_log(self, file_name, log_path=None):
         import os
         from collections import OrderedDict
         import json
 
-        root_directory = os.path.dirname(os.path.abspath(__file__))
-        file_dir = os.path.join(root_directory, 'csp_log')
-        if not os.path.exists(file_dir):
-            os.makedirs(file_dir)
-        file_path = os.path.join(file_dir, file_name + '_csp_log' + '.json')
+        if not log_path:
+            root_directory = os.path.dirname(os.path.abspath(__file__))
+            file_dir = os.path.join(root_directory, 'csp_log')
+            if not os.path.exists(file_dir):
+                os.makedirs(file_dir)
+        else:
+            file_dir = log_path
+
+        file_path = os.path.join(file_dir, file_name + '_' + self.search_method + '_csp_log' + '.json')
         if not os.path.exists(file_path):
             open(file_path, "w+").close()
 
@@ -247,7 +264,7 @@ def cmaps_value_ordering(var, assignment, csp):
 def traversal_to_ground_value_ordering(var, assignment, csp):
     # compute graph traversal distance to the ground
     cur_vals = csp.choices(var)
-    return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val))
+    return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
 
 # inference
 # used in forward search

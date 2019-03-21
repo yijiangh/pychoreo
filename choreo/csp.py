@@ -6,6 +6,7 @@ import copy
 import random
 
 DEBUG = False
+KEYBOARD_STEP_SEARCH = False
 
 # util fn for shared domain
 class UniversalDict:
@@ -268,8 +269,8 @@ def backtracking_search(csp,
                         inference=no_inference):
 
     def backtrack(assignment):
-        # if DEBUG:
-            # raw_input("deeper search: ")
+        if DEBUG and KEYBOARD_STEP_SEARCH:
+            raw_input("deeper search: ")
         print('assignment len:{}'.format(len(assignment)))
         if len(assignment) == len(csp.variables):
             return assignment
