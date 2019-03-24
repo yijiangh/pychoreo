@@ -123,6 +123,33 @@ class AssemblyNetwork(object):
         for v in self.assembly_joints.values():
             print('neighbor e of v{0}: {1}'.format(v.node_id, self.get_node_neighbor(v.node_id)))
 
+    # A function used by DFS
+    def dfs_util(self, sub_graph, e_id, visited):
+        # Mark the current node as visited and print it
+        visited[e_id] = True
+
+        # Recur for all the vertices adjacent to
+        # this vertex
+        ngbh_es = set(self.get_element_neighbor(e_id))
+        ngbh_es = ngbh_es.intersection(sub_graph)
+        # assert(len(ngbh_es) > 0)
+
+        for n_e in ngbh_es:
+            if not visited[n_e]:
+                self.dfs_util(sub_graph, n_e, visited)
+
+    def subgraph_dfs(self, sub_graph):
+        """subgraph is a list of e_ids"""
+        num_e = self.get_size_of_elements()
+        visited = [False] * (num_e)
+        for e in sub_graph:
+            if not visited[e]:
+                self.dfs_util(sub_graph, e, visited)
+
+        subgraph_visited = [visited[e] for e in sub_graph]
+        return subgraph_visited
+
+
     def compute_traversal_to_ground_dist(self):
 
         def dijkstra(net, src_e_id):

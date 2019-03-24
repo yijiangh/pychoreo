@@ -11,7 +11,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, get_movable_j
 from choreo.extrusion_utils import get_disabled_collisions
 
 DEBUG=True
-DEFAULT_UNIT_PROCESS_TIMEOUT = 2
+DEFAULT_UNIT_PROCESS_TIMEOUT = 10
 DEFAULT_SPARSE_GRAPH_RUNG_TIMEOUT = 4
 SELF_COLLISIONS=False
 # utils

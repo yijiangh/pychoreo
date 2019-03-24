@@ -1,6 +1,7 @@
 import numpy as np
 from copy import copy
 import time
+import random
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import get_movable_joints, get_collision_fn
 
@@ -25,7 +26,7 @@ class AssemblyCSP(CSP):
     needs to keep track of a feasible direction map for each domain value (element_id)
 
     """
-    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method=None):
+    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method=None, use_layer=True):
         self.search_method = search_method
 
         assert(isinstance(assembly_network, AssemblyNetwork))
@@ -39,11 +40,14 @@ class AssemblyCSP(CSP):
         if self.search_method == 'backward':
             layer_ids.sort(reverse=True)
 
-        for l_id in layer_ids:
-            l_e_ids = assembly_network.get_layer_element_ids(l_id)
-            prev_e_num = len(decomposed_domains)
-            for i in range(prev_e_num, prev_e_num + len(l_e_ids)):
-                decomposed_domains[i] = l_e_ids
+        if use_layer:
+            for l_id in layer_ids:
+                l_e_ids = assembly_network.get_layer_element_ids(l_id)
+                prev_e_num = len(decomposed_domains)
+                for i in range(prev_e_num, prev_e_num + len(l_e_ids)):
+                    decomposed_domains[i] = l_e_ids
+        else:
+            decomposed_domains = UniversalDict(list(range(n)))
 
         CSP.__init__(self, variables=list(range(n)), domains=decomposed_domains,
                      neighbors=UniversalDict(list(range(n))), constraints=always_false_constraint_fn)
@@ -71,18 +75,28 @@ class AssemblyCSP(CSP):
             return len(assignment.values()) == len(set(assignment.values()))
 
         def connect(self, var, val, assignment):
-            ngbh_e_ids = self.net.get_element_neighbor(val)
+
+            def check_sub_graph_connectivity(assembly_network, sub_e_graph):
+                # check if sub_es only has one component
+                subgraph_visited = assembly_network.subgraph_dfs(sub_e_graph)
+                # print('subg: {}'.format(sub_e_graph))
+                # print('nvisited: {}'.format(subgraph_visited))
+                return all(subgraph_visited)
 
             if self.search_method == 'forward':
+                ngbh_e_ids = self.net.get_element_neighbor(val)
                 return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
                           or self.net.is_element_grounded(val)
-            if self.search_method == 'backward':
-                unassigned_vars = list(set(self.variables).difference(assignment.keys()))
-                return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
-                    or any(self.net.is_element_grounded(unass_val) for unass_val in unassigned_vars)
 
-            # else:
-            #     return True
+            if self.search_method == 'backward':
+                unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
+                if not unassigned_vals:
+                    return True
+                return check_sub_graph_connectivity(self.net, unassigned_vals) \
+                    and any(self.net.is_element_grounded(e) for e in unassigned_vals)
+
+                # any(val_k in ngbh_e_ids for val_k in assignment.values()) and
+                    # and any(self.net.is_element_grounded(unass_val) for unass_val in unassigned_vals)
 
         def stiffness(self, var, val, assignment):
             return True
@@ -122,7 +136,7 @@ class AssemblyCSP(CSP):
                     # everytime we start fresh
                     # val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
 
-                    # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+                    print('checking #{0}-e{1}, before pruning, cmaps sum: {2}'.format(var, val, sum(val_cmap)))
                     # print('checking print #{} collision against: '.format(val))
                     # print(sorted(unassigned_vals))
                     # print('static obstables: {}'.format(built_obstacles))
@@ -131,9 +145,10 @@ class AssemblyCSP(CSP):
                     val_cmap = update_collision_map_batch(self.net, self.ee_body,
                                                           print_along_e_id=val, print_along_cmap=val_cmap, bodies=built_obstacles)
 
-                    # print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
+                    print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
+                    print('-----')
 
-                    if sum(val_cmap) == 0:
+                    if sum(val_cmap) < 5: #== 0:
                         return False
 
                 collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
@@ -263,7 +278,9 @@ def cmaps_value_ordering(var, assignment, csp):
 # --- used in backward search
 def traversal_to_ground_value_ordering(var, assignment, csp):
     # compute graph traversal distance to the ground
-    cur_vals = csp.choices(var)
+    cur_vals = copy(csp.choices(var))
+    # random.shuffle(cur_vals)
+    # return cur_vals
     return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
 
 # inference

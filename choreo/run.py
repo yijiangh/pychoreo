@@ -32,7 +32,7 @@ SEARCH_METHODS = {
     'f': 'forward',
 }
 
-def plan_sequence(robot, obstacles, assembly_network, search_method='backward', file_name=None):
+def plan_sequence(robot, obstacles, assembly_network, search_method='backward', use_layer=True, file_name=None):
     pr = cProfile.Profile()
     pr.enable()
 
@@ -47,7 +47,7 @@ def plan_sequence(robot, obstacles, assembly_network, search_method='backward', 
     # layer_size = max(element_group_ids.keys())
 
     # generate AssemblyCSP problem
-    csp = AssemblyCSP(robot, obstacles, search_method=search_method, assembly_network=assembly_network)
+    csp = AssemblyCSP(robot, obstacles, search_method=search_method, assembly_network=assembly_network, use_layer=use_layer)
     csp.logging = LOG_CSP
 
     try:
@@ -98,26 +98,28 @@ def plan_sequence(robot, obstacles, assembly_network, search_method='backward', 
     return seq, seq_poses
 
 def display_trajectories(assembly_network, trajectories, time_step=0.075):
+    disconnect()
     if trajectories is None:
         return
     connect(use_gui=True)
     floor, robot = load_world()
     camera_base_pt = assembly_network.get_end_points(0)[0]
-    camera_pt = np.array(camera_base_pt) + np.array([0.1,0,0.05])
+    camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
     set_camera_pose(tuple(camera_pt), camera_base_pt)
-    wait_for_interrupt()
+    # wait_for_interrupt()
+
     movable_joints = get_movable_joints(robot)
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
     # connected = set(ground_nodes)
     for trajectory in trajectories:
-    #     if isinstance(trajectory, PrintTrajectory):
-    #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
-    #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
-    #         connected.add(trajectory.n2)
-    #     #wait_for_interrupt()
-    #     #set_color(element_bodies[element], (1, 0, 0, 1))
+        #     if isinstance(trajectory, PrintTrajectory):
+        #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
+        #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
+        #         connected.add(trajectory.n2)
+        #     #wait_for_interrupt()
+        #     #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
         for conf in trajectory: #.path:
@@ -129,8 +131,7 @@ def display_trajectories(assembly_network, trajectories, time_step=0.075):
                 handles.append(add_line(last_point, current_point, color=color))
             last_point = current_point
             wait_for_duration(time_step)
-        #wait_for_interrupt()
-    # user_input('Finish?')
+        # wait_for_interrupt()
 
     wait_for_interrupt()
     disconnect()
@@ -141,6 +142,7 @@ def main(precompute=False):
     # four-frame | simple_frame | djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-sm', '--search_method', default='b', help='csp search method, b for backward, f for forward.')
+    parser.add_argument('-l', '--use_layer', action='store_true', help='use layer info in the search.')
     # parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     # parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
@@ -176,15 +178,15 @@ def main(precompute=False):
     assembly_network.compute_traversal_to_ground_dist()
 
     # debug chuck
-    if args.debug:
-        set_camera_pose(tuple(camera_pt), target_camera_pt)
-
-        exist_element_ids = [12, 14, 15, 16, 17, 18] #[14, 15, 16, 17, 18]
-        check_e_id = 9 #12
-        check_and_draw_ee_collision(robot, obstacles, assembly_network, exist_element_ids, check_e_id)
-
-        wait_for_interrupt('Continue?')
-        return
+    # if args.debug:
+    #     set_camera_pose(tuple(camera_pt), target_camera_pt)
+    #
+    #     exist_element_ids = [12, 14, 15, 16, 17, 18] #[14, 15, 16, 17, 18]
+    #     check_e_id = 9 #12
+    #     check_and_draw_ee_collision(robot, obstacles, assembly_network, exist_element_ids, check_e_id)
+    #
+    #     wait_for_interrupt('Continue?')
+    #     return
     # end debug chuck
 
     if has_gui():
@@ -196,7 +198,8 @@ def main(precompute=False):
     if not use_seq_existing_plan:
         with LockRenderer():
             search_method = SEARCH_METHODS[args.search_method]
-            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network, search_method=search_method,
+            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network,
+                                                   search_method=search_method, use_layer=args.use_layer,
                                                    file_name=args.problem)
         write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
@@ -222,9 +225,7 @@ def main(precompute=False):
 
     trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
 
-    if args.viewer:
-       disconnect()
-
+    # if args.viewer:
     display_trajectories(assembly_network, trajectories)
     print('Quit?')
     if has_gui():
