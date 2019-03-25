@@ -298,13 +298,13 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
 def set_cmaps_using_seq(seq, csp):
     # assert(isinstance(csp, AssemblyCSP))
     built_obstacles = csp.obstacles
-    print('static obstacles: {}'.format(built_obstacles))
+    # print('static obstacles: {}'.format(built_obstacles))
     for i in seq.keys():
         check_e_id = seq[i]
-        print('------')
-        print('prune seq #{0} - e{1}'.format(i, check_e_id))
+        # print('------')
+        # print('prune seq #{0} - e{1}'.format(i, check_e_id))
         # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
-        print('obstables: {}'.format(built_obstacles))
+        # print('obstables: {}'.format(built_obstacles))
 
         st_time = time.time()
         while time.time() - st_time < 5:
@@ -312,7 +312,7 @@ def set_cmaps_using_seq(seq, csp):
             csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
                                                                print_along_e_id=check_e_id, print_along_cmap=val_cmap,
                                                                bodies=built_obstacles)
-            print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
+            # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
             if sum(csp.cmaps[check_e_id]) > 0:
                 break
 

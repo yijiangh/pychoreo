@@ -123,68 +123,52 @@ class AssemblyNetwork(object):
         for v in self.assembly_joints.values():
             print('neighbor e of v{0}: {1}'.format(v.node_id, self.get_node_neighbor(v.node_id)))
 
-    # A function used by DFS
-    def dfs_util(self, sub_graph, e_id, visited):
-        # Mark the current node as visited and print it
-        visited[e_id] = True
+    def dijkstra(self, src_e_id, sub_graph=None):
+        def min_distance(e_size, dist, visited_set):
+            # return -1 if all the unvisited vertices' dist = inf (disconnected)
+            min = np.inf
+            min_index = -1
+            for e_id in range(e_size):
+                if dist[e_id] < min and not visited_set[e_id]:
+                    min = dist[e_id]
+                    min_index = e_id
+            # assert(min_index > -1)
+            return min_index
 
-        # Recur for all the vertices adjacent to
-        # this vertex
-        ngbh_es = set(self.get_element_neighbor(e_id))
-        ngbh_es = ngbh_es.intersection(sub_graph)
-        # assert(len(ngbh_es) > 0)
+        if self.is_element_grounded(src_e_id):
+            return 0
+        e_size = self.get_size_of_elements()
+        dist = [np.inf] * e_size
+        dist[src_e_id] = 0
+        visited_set = [False] * e_size
 
-        for n_e in ngbh_es:
-            if not visited[n_e]:
-                self.dfs_util(sub_graph, n_e, visited)
+        for k in range(e_size):
+            if sub_graph:
+                if k not in sub_graph:
+                    continue
+            e_id = min_distance(e_size, dist, visited_set)
+            if e_id == -1:
+                # all unvisited ones are inf distance (not connected)
+                break
 
-    def subgraph_dfs(self, sub_graph):
-        """subgraph is a list of e_ids"""
-        num_e = self.get_size_of_elements()
-        visited = [False] * (num_e)
-        for e in sub_graph:
-            if not visited[e]:
-                self.dfs_util(sub_graph, e, visited)
+            visited_set[e_id] = True
 
-        subgraph_visited = [visited[e] for e in sub_graph]
-        return subgraph_visited
+            nbhd_e_ids = set(self.get_element_neighbor(e_id))
+            if sub_graph:
+                nbhd_e_ids = nbhd_e_ids.intersection(sub_graph)
 
+            for n_e_id in nbhd_e_ids:
+                if not visited_set[n_e_id] and dist[n_e_id] > dist[e_id] + 1:
+                    dist[n_e_id] = dist[e_id] + 1
 
-    def compute_traversal_to_ground_dist(self):
+        # get smallest dist to the grounded elements
+        grounded_dist = [dist[e.e_id] for e in self.assembly_elements.values() if e.is_grounded]
+        return min(grounded_dist)
 
-        def dijkstra(net, src_e_id):
-            def min_distance(e_size, dist, visited_set):
-                min = np.inf
-                min_index = -1
-                for e_id in range(e_size):
-                    if dist[e_id] < min and not visited_set[e_id]:
-                        min = dist[e_id]
-                        min_index = e_id
-                assert(min_index > -1)
-                return min_index
-
-            if net.is_element_grounded(src_e_id):
-                return 0
-            e_size = net.get_size_of_elements()
-            dist = [np.inf] * e_size
-            dist[src_e_id] = 0
-            visited_set = [False] * e_size
-
-            for k in range(e_size):
-                e_id = min_distance(e_size, dist, visited_set)
-                visited_set[e_id] = True
-                for end_id in net.assembly_elements[e_id].node_ids:
-                    nbhd_e_ids = net.get_element_neighbor(e_id, end_id)
-                    for n_e_id in nbhd_e_ids:
-                        if not visited_set[n_e_id] and dist[n_e_id] > dist[e_id] + 1:
-                            dist[n_e_id] = dist[e_id] + 1
-
-            # get smallest dist to the grounded elements
-            grounded_dist = [dist[e.e_id] for e in net.assembly_elements.values() if e.is_grounded]
-            return min(grounded_dist)
-
-        for e in self.assembly_elements.values():
-            e.to_ground_dist = dijkstra(self, e.e_id)
+    def compute_traversal_to_ground_dist(self, sub_graph=None):
+        considered_e_ids = self.assembly_elements.keys() if not sub_graph else sub_graph
+        for e in considered_e_ids:
+            self.assembly_elements[e].to_ground_dist = self.dijkstra(e, sub_graph)
 
     def __repr__(self):
         return 'assembly_net: #joint:{0}, #element:{1}'.format(self.get_size_of_joints(), self.get_size_of_elements())

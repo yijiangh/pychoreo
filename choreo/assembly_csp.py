@@ -76,12 +76,13 @@ class AssemblyCSP(CSP):
 
         def connect(self, var, val, assignment):
 
-            def check_sub_graph_connectivity(assembly_network, sub_e_graph):
-                # check if sub_es only has one component
-                subgraph_visited = assembly_network.subgraph_dfs(sub_e_graph)
-                # print('subg: {}'.format(sub_e_graph))
-                # print('nvisited: {}'.format(subgraph_visited))
-                return all(subgraph_visited)
+            def check_sub_graph_connect_to_ground(assembly_network, sub_e_graph):
+                to_ground_dist = []
+                for e in sub_e_graph:
+                     to_ground_dist.append(self.net.dijkstra(e, sub_e_graph))
+                min_g_dist = not any([d is np.inf for d in to_ground_dist])
+                # print('ground_dist {0} / {1}'.format(min_g_dist, to_ground_dist))
+                return min_g_dist
 
             if self.search_method == 'forward':
                 ngbh_e_ids = self.net.get_element_neighbor(val)
@@ -91,12 +92,20 @@ class AssemblyCSP(CSP):
             if self.search_method == 'backward':
                 unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
                 if not unassigned_vals:
+                    # all assigned
                     return True
-                return check_sub_graph_connectivity(self.net, unassigned_vals) \
-                    and any(self.net.is_element_grounded(e) for e in unassigned_vals)
 
-                # any(val_k in ngbh_e_ids for val_k in assignment.values()) and
-                    # and any(self.net.is_element_grounded(unass_val) for unass_val in unassigned_vals)
+                ngbh_e_ids = self.net.get_element_neighbor(val)
+                connect_to_unassigned = \
+                    any(val_k in ngbh_e_ids for val_k in unassigned_vals) \
+                    or all(self.net.is_element_grounded(val_k) for val_k in unassigned_vals)
+
+                # print(' -- check e{}'.format(val))
+                if any(self.net.is_element_grounded(e) for e in unassigned_vals) \
+                   and connect_to_unassigned:
+                    return check_sub_graph_connect_to_ground(self.net, unassigned_vals)
+                else:
+                    return False
 
         def stiffness(self, var, val, assignment):
             return True
@@ -136,7 +145,7 @@ class AssemblyCSP(CSP):
                     # everytime we start fresh
                     # val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
 
-                    print('checking #{0}-e{1}, before pruning, cmaps sum: {2}'.format(var, val, sum(val_cmap)))
+                    # print('checking #{0}-e{1}, before pruning, cmaps sum: {2}'.format(var, val, sum(val_cmap)))
                     # print('checking print #{} collision against: '.format(val))
                     # print(sorted(unassigned_vals))
                     # print('static obstables: {}'.format(built_obstacles))
@@ -145,8 +154,8 @@ class AssemblyCSP(CSP):
                     val_cmap = update_collision_map_batch(self.net, self.ee_body,
                                                           print_along_e_id=val, print_along_cmap=val_cmap, bodies=built_obstacles)
 
-                    print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
-                    print('-----')
+                    # print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
+                    # print('-----')
 
                     if sum(val_cmap) < 5: #== 0:
                         return False
@@ -161,7 +170,7 @@ class AssemblyCSP(CSP):
         constraint_fns = [alldiff, connect, exist_valid_ee_pose]
 
         violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
-        # print('constraint violation: {}'.format(violation))
+        print('constraint violation: {}'.format(violation))
         _nconflicts = count(violation)
         return _nconflicts
 
@@ -279,9 +288,9 @@ def cmaps_value_ordering(var, assignment, csp):
 def traversal_to_ground_value_ordering(var, assignment, csp):
     # compute graph traversal distance to the ground
     cur_vals = copy(csp.choices(var))
-    # random.shuffle(cur_vals)
-    # return cur_vals
-    return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
+    random.shuffle(cur_vals)
+    return cur_vals
+    # return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
 
 # inference
 # used in forward search

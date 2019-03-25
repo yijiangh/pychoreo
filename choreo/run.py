@@ -76,7 +76,7 @@ def plan_sequence(robot, obstacles, assembly_network, search_method='backward', 
         for i in seq.keys():
             rev_seq[order_keys[i]] = seq[i]
         seq = rev_seq
-        csp = set_cmaps_using_seq(seq, csp)
+        csp = set_cmaps_using_seq(rev_seq, csp)
 
     print('final seq: {}'.format(seq))
 
@@ -190,7 +190,7 @@ def main(precompute=False):
     # end debug chuck
 
     if has_gui():
-        pline_handle = draw_model(assembly_network, draw_tags=True)
+        pline_handle = draw_model(assembly_network, draw_tags=False)
         set_camera_pose(tuple(camera_pt), target_camera_pt)
         wait_for_interrupt('Continue?')
 
@@ -211,7 +211,7 @@ def main(precompute=False):
     if has_gui():
         # wait_for_interrupt('Press a key to visualize the plan...')
         map(p.removeUserDebugItem, pline_handle)
-        draw_assembly_sequence(assembly_network, element_seq, seq_poses)
+        draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
@@ -226,7 +226,7 @@ def main(precompute=False):
     trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
 
     # if args.viewer:
-    display_trajectories(assembly_network, trajectories)
+    display_trajectories(assembly_network, trajectories, time_step=0.15)
     print('Quit?')
     if has_gui():
         wait_for_interrupt()
