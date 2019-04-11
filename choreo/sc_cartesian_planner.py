@@ -472,8 +472,8 @@ class SparseLadderGraph(object):
             if not cap_rung.cap_verts:
                 print('cap_rung #{0} fails to find a feasible sol within timeout {1}'.format(r_id, DEFAULT_UNIT_PROCESS_TIMEOUT))
                 return np.inf
-            else:
-                if DEBUG: print('cap_rung #{0}'.format(r_id))
+            # else:
+                # if DEBUG: print('cap_rung #{0}'.format(r_id))
 
         initial_cost = self.cap_rungs[-1].cap_verts[0].get_cost_to_root()
         print('initial sol found! cost: {}'.format(initial_cost))

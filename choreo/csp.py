@@ -283,7 +283,7 @@ def backtracking_search(csp,
             if 0 == csp.nconflicts(var, value, assignment):
                 csp.assign(var, value, assignment)
                 if csp.logging:
-                    csp.log_assigns[csp.nassigns] = copy.copy(assignment)
+                    csp.log_assigns[csp.nassigns-1] = copy.copy(assignment)
 
                 # if DEBUG:
                 #     print('constraint pass: var:{0} - val:{1}'.format(var, value))

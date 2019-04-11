@@ -62,6 +62,15 @@ class AssemblyCSP(CSP):
             self.cmaps[e_id] = np.ones(PHI_DISC * THETA_DISC, dtype=int)
         self.ee_body = load_end_effector()
 
+        self.constr_check_time = {}
+        self.constr_check_time['connect'] = {}
+        self.constr_check_time['connect'][1] = 0
+        self.constr_check_time['connect'][0] = 0
+
+        self.constr_check_time['exist_valid_ee_pose'] = {}
+        self.constr_check_time['exist_valid_ee_pose'][1] = 0
+        self.constr_check_time['exist_valid_ee_pose'][0] = 0
+
     def nconflicts(self, var, val, assignment):
         """Return the number of conflicts var=val has with other variables."""
         # Subclasses may implement this more efficiently
@@ -84,16 +93,21 @@ class AssemblyCSP(CSP):
                 # print('ground_dist {0} / {1}'.format(min_g_dist, to_ground_dist))
                 return min_g_dist
 
+            success = False
             if self.search_method == 'forward':
                 ngbh_e_ids = self.net.get_element_neighbor(val)
-                return any(val_k in ngbh_e_ids for val_k in assignment.values()) \
+                success = any(val_k in ngbh_e_ids for val_k in assignment.values()) \
                           or self.net.is_element_grounded(val)
+                self.constr_check_time['connect'][success] += 1
+                return success
 
             if self.search_method == 'backward':
                 unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
                 if not unassigned_vals:
                     # all assigned
-                    return True
+                    success = True
+                    self.constr_check_time['connect'][success] += 1
+                    return success
 
                 ngbh_e_ids = self.net.get_element_neighbor(val)
                 connect_to_unassigned = \
@@ -103,9 +117,12 @@ class AssemblyCSP(CSP):
                 # print(' -- check e{}'.format(val))
                 if any(self.net.is_element_grounded(e) for e in unassigned_vals) \
                    and connect_to_unassigned:
-                    return check_sub_graph_connect_to_ground(self.net, unassigned_vals)
+                    success = check_sub_graph_connect_to_ground(self.net, unassigned_vals)
                 else:
-                    return False
+                    success = False
+
+                self.constr_check_time['connect'][success] += 1
+                return success
 
         def stiffness(self, var, val, assignment):
             return True
@@ -124,6 +141,7 @@ class AssemblyCSP(CSP):
                 val_cmap = copy(self.cmaps[val])
                 built_obstacles = self.obstacles
 
+                success = False
                 # forward search
                 if self.search_method == 'forward':
                     built_obstacles = built_obstacles + [self.net.get_element_body(assignment[i]) for i in assignment.keys() if i != var]
@@ -134,7 +152,9 @@ class AssemblyCSP(CSP):
                         exist_e_id = assignment[k]
                         val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
                         if sum(val_cmap) == 0:
-                            return False
+                            success = False
+                            self.constr_check_time['exist_valid_ee_pose'][success] += 1
+                            return success
                 # backward search
                 elif self.search_method == 'backward':
                     # all unassigned values are assumed to be collision objects
@@ -158,19 +178,23 @@ class AssemblyCSP(CSP):
                     # print('-----')
 
                     if sum(val_cmap) < 5: #== 0:
-                        return False
+                        success = False
+                        self.constr_check_time['exist_valid_ee_pose'][success] += 1
+                        return success
 
                 collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
                                                 attachments=[], self_collisions=SELF_COLLISIONS,
                                                 disabled_collisions=self.disabled_collisions,
                                                 custom_limits={})
-                return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
-                # return True
+                success = check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+                self.constr_check_time['exist_valid_ee_pose'][success] += 1
+                return success
+
 
         constraint_fns = [alldiff, connect, exist_valid_ee_pose]
 
         violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
-        print('constraint violation: {}'.format(violation))
+        # print('constraint violation: {}'.format(violation))
         _nconflicts = count(violation)
         return _nconflicts
 
@@ -264,8 +288,9 @@ class AssemblyCSP(CSP):
 
         data['number_assigns'] = self.nassigns
         data['number_backtracks'] = self.nbacktrackings
-        data['assign_history'] = self.log_assigns
         data['solve_time_util_stop'] = time.time() - self.start_time
+        data['constr_check_time'] = self.constr_check_time
+        data['assign_history'] = self.log_assigns
 
         with open(file_path, 'w') as outfile:
             json.dump(data, outfile, indent=4)
@@ -278,6 +303,11 @@ def next_variable_in_sequence(assignment, csp):
         return 0
 
 # value ordering
+def random_value_ordering(var, assignment, csp):
+    cur_vals = csp.choices(var)
+    random.shuffle(cur_vals)
+    return cur_vals
+
 # --- used in forward search
 # choose value with min cmap sum
 def cmaps_value_ordering(var, assignment, csp):
@@ -288,9 +318,7 @@ def cmaps_value_ordering(var, assignment, csp):
 def traversal_to_ground_value_ordering(var, assignment, csp):
     # compute graph traversal distance to the ground
     cur_vals = copy(csp.choices(var))
-    random.shuffle(cur_vals)
-    return cur_vals
-    # return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
+    return sorted(cur_vals, key=lambda val: csp.net.get_element_to_ground_dist(val), reverse=True)
 
 # inference
 # used in forward search

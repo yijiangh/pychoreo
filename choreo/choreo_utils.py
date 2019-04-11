@@ -407,8 +407,7 @@ def read_seq_json(file_name):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     file_dir = os.path.join(root_directory, 'results')
     file_path = os.path.join(file_dir, file_name + '.json')
-    if not os.path.exists(file_dir) or not os.path.exists(file_path):
-        return None, None
+    assert(os.path.exists(file_dir) and os.path.exists(file_path))
     try:
         with open(file_path, 'r') as f:
             json_data = json.loads(f.read())
@@ -426,3 +425,27 @@ def read_seq_json(file_name):
     except Exception as e:
         print('No existing sequence plan found, return False: {}'.format(e))
         return None, None
+
+
+def read_csp_log_json(file_name, check_backward_search=True, log_path=None):
+    if not log_path:
+        root_directory = os.path.dirname(os.path.abspath(__file__))
+        file_dir = os.path.join(root_directory, 'csp_log')
+    else:
+        file_dir = log_path
+
+    if check_backward_search:
+        file_path = os.path.join(file_dir, file_name + '_backward_csp_log.json')
+    else:
+        file_path = os.path.join(file_dir, file_name + '_forward_csp_log.json')
+
+    assert(os.path.exists(file_dir) and os.path.exists(file_path))
+    with open(file_path, 'r') as f:
+        json_data = json.loads(f.read())
+        assert(json_data.has_key('assign_history'))
+        assign_history = {}
+        for k in json_data['assign_history'].keys():
+            assign_history[int(k)] = json_data['assign_history'][k].values()
+        # print(assign_history)
+        print('csp_log parse: {}'.format(file_path))
+        return assign_history

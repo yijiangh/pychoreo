@@ -19,20 +19,25 @@ from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 from .assembly_datastructure import AssemblyNetwork
 from .csp import backtracking_search
 from .assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
-    traversal_to_ground_value_ordering
+    traversal_to_ground_value_ordering, random_value_ordering
 from .choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
     check_and_draw_ee_collision, set_cmaps_using_seq
 from .sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
 
+import meshcat
+from .result_viz import meshcat_visualize_assembly_sequence
+
 LOG_CSP = True
-LOG_CSP_PATH = "/Users/yijiangh/Dropbox (MIT)/Projects/Choreo/Software/shared_problem_instance/csp_log"
+LOG_CSP_PATH = None
+#"/Users/yijiangh/Dropbox (MIT)/Projects/Choreo/Software/shared_problem_instance/csp_log"
 
 SEARCH_METHODS = {
     'b': 'backward',
     'f': 'forward',
 }
 
-def plan_sequence(robot, obstacles, assembly_network, search_method='backward', use_layer=True, file_name=None):
+def plan_sequence(robot, obstacles, assembly_network,
+                  search_method='backward', value_ordering_method='random', use_layer=True, file_name=None):
     pr = cProfile.Profile()
     pr.enable()
 
@@ -49,15 +54,26 @@ def plan_sequence(robot, obstacles, assembly_network, search_method='backward', 
     # generate AssemblyCSP problem
     csp = AssemblyCSP(robot, obstacles, search_method=search_method, assembly_network=assembly_network, use_layer=use_layer)
     csp.logging = LOG_CSP
+    print('search method: {0}\n, value ordering method: {1}\n, use_layer: {2}'.format(
+        search_method, value_ordering_method, use_layer))
 
     try:
         if search_method == 'forward':
-            seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
-                                           order_domain_values=cmaps_value_ordering,
-                                           inference=cmaps_forward_check)
+            if value_ordering_method == 'random':
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=random_value_ordering,
+                                               inference=cmaps_forward_check)
+            else:
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=cmaps_value_ordering,
+                                               inference=cmaps_forward_check)
         elif search_method == 'backward':
-            seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
-                                           order_domain_values=traversal_to_ground_value_ordering)
+            if value_ordering_method == 'random':
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=random_value_ordering)
+            else:
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=traversal_to_ground_value_ordering)
     except KeyboardInterrupt:
         if csp.logging and file_name:
             csp.write_csp_log(file_name, log_path=LOG_CSP_PATH)
@@ -76,9 +92,14 @@ def plan_sequence(robot, obstacles, assembly_network, search_method='backward', 
         for i in seq.keys():
             rev_seq[order_keys[i]] = seq[i]
         seq = rev_seq
+        st_time = time.time()
         csp = set_cmaps_using_seq(rev_seq, csp)
+        print('pruning time: {0}'.format(time.time() - st_time))
 
-    print('final seq: {}'.format(seq))
+    print('# of assigns: {0}'.format(csp.nassigns))
+    print('# of bt: {0}'.format(csp.nbacktrackings))
+    print('constr check time: {0}'.format(csp.constr_check_time))
+    # print('final seq: {}'.format(seq))
 
     seq_poses = {}
     for i in seq.keys():
@@ -142,6 +163,8 @@ def main(precompute=False):
     # four-frame | simple_frame | djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-sm', '--search_method', default='b', help='csp search method, b for backward, f for forward.')
+    parser.add_argument('-vom', '--value_order_method', default='sp',
+                        help='value ordering method, sp for special heuristic, random for random value ordering')
     parser.add_argument('-l', '--use_layer', action='store_true', help='use layer info in the search.')
     # parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     # parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
@@ -199,7 +222,9 @@ def main(precompute=False):
         with LockRenderer():
             search_method = SEARCH_METHODS[args.search_method]
             element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network,
-                                                   search_method=search_method, use_layer=args.use_layer,
+                                                   search_method=search_method,
+                                                   value_ordering_method=args.value_order_method,
+                                                   use_layer=args.use_layer,
                                                    file_name=args.problem)
         write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
@@ -211,7 +236,16 @@ def main(precompute=False):
     if has_gui():
         # wait_for_interrupt('Press a key to visualize the plan...')
         map(p.removeUserDebugItem, pline_handle)
-        draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
+        # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
+
+    print('Visualizing assembly seq in meshcat...')
+    vis = meshcat.Visualizer()
+    try:
+        vis.open()
+    except:
+        vis.url()
+    meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses,
+                                        scale=3, time_step=0.5, direction_len=0.025)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
