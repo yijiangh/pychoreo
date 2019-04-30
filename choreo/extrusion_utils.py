@@ -13,13 +13,13 @@ from choreo.assembly_datastructure import AssemblyElement
 
 EXTRUSION_DIRECTORY = os.path.join("..", "assembly_instances", "extrusion")
 EXTRUSION_FILENAMES = {
-    'djmm_test_block': 'djmm_test_block_S1.0_09-17-2018.json',
-    'mars_bubble': 'mars_bubble_S1.0_09-17-2018.json',
-    'sig_artopt-bunny': 'sig_artopt-bunny_S1.0_09-17-2018.json',
-    'topopt-100': 'topopt-100_S1_03-14-2019.json', # 'topopt-100_S1.0_09-17-2018.json',
-    'topopt-205': 'topopt-205_S0.7_09-17-2018.json',
-    'topopt-310': 'topopt-310_S1.0_09-17-2018.json',
-    'voronoi': 'voronoi_S1.0_09-05-2018.json',
+    'djmm_test_block': 'djmm_test_block_S1_03-14-2019_w_layer.json ',
+    'mars_bubble': 'mars_bubble_S1_03-14-2019_w_layer.json',
+    'sig_artopt-bunny': 'sig_artopt-bunny_S1_03-14-2019_w_layer.json',
+    'topopt-100': 'topopt-100_S1_03-14-2019_w_layer.json',
+    'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
+    'topopt-310': 'topopt-310_S1_03-14-2019_w_layer.json',
+    'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
     'simple_frame': 'simple_frame.json',
     'four-frame': 'four-frame.json',
 }
@@ -59,7 +59,7 @@ def load_extrusion(extrusion_name, parse_layers=False):
     print('Nodes: {} | Ground: {} | Elements: {}'.format(
         len(node_points), len(ground_nodes), len(elements)))
 
-    return elements, node_points, ground_nodes
+    return elements, node_points, ground_nodes, extrusion_path
 
 def parse_point(json_point, scale=DEFAULT_SCALE):
     return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])

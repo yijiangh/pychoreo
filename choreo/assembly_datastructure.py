@@ -1,5 +1,6 @@
 import math
-# import numpy as np
+import numpy as np
+from profilehooks import timecall, profile
 
 def tuple_l2norm(p1, p2):
     return math.sqrt(sum([pow((float(p1_i) - float(p2_i)),2) for p1_i, p2_i in zip(p1, p2)]))
@@ -22,6 +23,7 @@ class AssemblyElement(object):
         self.layer_id = layer_id
         self.element_body=element_body
         self.is_grounded = False
+        self.to_ground_dist = np.inf
 
     def __repr__(self):
         return 'e{0}, {1}, {2}, {3}'.format(self.e_id, self.node_ids, self.layer_id, self.element_body)
@@ -65,6 +67,16 @@ class AssemblyNetwork(object):
             ngbh_ids.extend([e_id for e_id in self.assembly_joints[end_node_id].neighbor_e_ids if e_id != element_id])
         return ngbh_ids
 
+    def get_node_point(self, v_id):
+        return self.assembly_joints[v_id].node_point
+
+    def get_shared_node_id(self, e1, e2):
+        e1_ends = set(self.assembly_elements[e1].node_ids)
+        e2_ends = list(self.assembly_elements[e2].node_ids)
+        shared_nodes = e1_ends.intersection(e2_ends)
+        assert(shared_nodes and len(shared_nodes)==1, "e1 e2 should not be neighbor or coincided")
+        return shared_nodes.pop()
+
     def get_node_neighbor(self, node_id):
         return self.assembly_joints[node_id].neighbor_e_ids
 
@@ -77,6 +89,9 @@ class AssemblyNetwork(object):
 
     def is_element_grounded(self, e_id):
         return self.assembly_elements[e_id].is_grounded
+
+    def get_element_to_ground_dist(self, e_id):
+        return self.assembly_elements[e_id].to_ground_dist
 
     # insert fns
     def insert_joint(self, node_point, is_grounded=False):
@@ -118,6 +133,54 @@ class AssemblyNetwork(object):
 
         for v in self.assembly_joints.values():
             print('neighbor e of v{0}: {1}'.format(v.node_id, self.get_node_neighbor(v.node_id)))
+
+    def dijkstra(self, src_e_id, sub_graph=None):
+        def min_distance(e_size, dist, visited_set):
+            # return -1 if all the unvisited vertices' dist = inf (disconnected)
+            min = np.inf
+            min_index = -1
+            for e_id in range(e_size):
+                if dist[e_id] < min and not visited_set[e_id]:
+                    min = dist[e_id]
+                    min_index = e_id
+            # assert(min_index > -1)
+            return min_index
+
+        if self.is_element_grounded(src_e_id):
+            return 0
+        e_size = self.get_size_of_elements()
+        dist = [np.inf] * e_size
+        dist[src_e_id] = 0
+        visited_set = [False] * e_size
+
+        for k in range(e_size):
+            if sub_graph:
+                if k not in sub_graph:
+                    continue
+            e_id = min_distance(e_size, dist, visited_set)
+            if e_id == -1:
+                # all unvisited ones are inf distance (not connected)
+                break
+
+            visited_set[e_id] = True
+
+            nbhd_e_ids = set(self.get_element_neighbor(e_id))
+            if sub_graph:
+                nbhd_e_ids = nbhd_e_ids.intersection(sub_graph)
+
+            for n_e_id in nbhd_e_ids:
+                if not visited_set[n_e_id] and dist[n_e_id] > dist[e_id] + 1:
+                    dist[n_e_id] = dist[e_id] + 1
+
+        # get smallest dist to the grounded elements
+        grounded_dist = [dist[e.e_id] for e in self.assembly_elements.values() if e.is_grounded]
+        return min(grounded_dist)
+
+    @timecall
+    def compute_traversal_to_ground_dist(self, sub_graph=None):
+        considered_e_ids = self.assembly_elements.keys() if not sub_graph else sub_graph
+        for e in considered_e_ids:
+            self.assembly_elements[e].to_ground_dist = self.dijkstra(e, sub_graph)
 
     def __repr__(self):
         return 'assembly_net: #joint:{0}, #element:{1}'.format(self.get_size_of_joints(), self.get_size_of_elements())

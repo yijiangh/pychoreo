@@ -16,15 +16,31 @@ from choreo.extrusion_utils import create_elements, \
     load_extrusion, load_world
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
+from pyconmech import stiffness_checker
+
 from .assembly_datastructure import AssemblyNetwork
 from .csp import backtracking_search
-from .forward_assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check
-from .choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection
+from .assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
+    traversal_to_ground_value_ordering, random_value_ordering
+from .choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
+    check_and_draw_ee_collision, set_cmaps_using_seq
 from .sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
 
-LOG_CSP = True
+import meshcat
+from .result_viz import meshcat_visualize_assembly_sequence
 
-def plan_sequence(robot, obstacles, assembly_network, file_name=None):
+LOG_CSP = True
+LOG_CSP_PATH = None
+#"/Users/yijiangh/Dropbox (MIT)/Projects/Choreo/Software/shared_problem_instance/csp_log"
+
+SEARCH_METHODS = {
+    'b': 'backward',
+    'f': 'forward',
+}
+
+def plan_sequence(robot, obstacles, assembly_network,
+                  stiffness_checker=None,
+                  search_method='backward', value_ordering_method='random', use_layer=True, file_name=None):
     pr = cProfile.Profile()
     pr.enable()
 
@@ -39,16 +55,35 @@ def plan_sequence(robot, obstacles, assembly_network, file_name=None):
     # layer_size = max(element_group_ids.keys())
 
     # generate AssemblyCSP problem
-    csp = AssemblyCSP(robot, obstacles, assembly_network=assembly_network)
+    print('search method: {0},\nvalue ordering method: {1},\nuse_layer: {2}'.format(
+        search_method, value_ordering_method, use_layer))
+    csp = AssemblyCSP(robot, obstacles, assembly_network=assembly_network,
+                      stiffness_checker=stiffness_checker,
+                      search_method=search_method,
+                      vom=value_ordering_method,
+                      use_layer=use_layer)
     csp.logging = LOG_CSP
 
     try:
-        seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
-                        order_domain_values=cmaps_value_ordering,
-                        inference=cmaps_forward_check)
+        if search_method == 'forward':
+            if value_ordering_method == 'random':
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=random_value_ordering,
+                                               inference=cmaps_forward_check)
+            else:
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=cmaps_value_ordering,
+                                               inference=cmaps_forward_check)
+        elif search_method == 'backward':
+            if value_ordering_method == 'random':
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=random_value_ordering)
+            else:
+                seq, csp = backtracking_search(csp, select_unassigned_variable=next_variable_in_sequence,
+                                               order_domain_values=traversal_to_ground_value_ordering)
     except KeyboardInterrupt:
         if csp.logging and file_name:
-            csp.write_csp_log(file_name)
+            csp.write_csp_log(file_name, log_path=LOG_CSP_PATH)
 
         pr.disable()
         pstats.Stats(pr).sort_stats('tottime').print_stats(10)
@@ -56,6 +91,22 @@ def plan_sequence(robot, obstacles, assembly_network, file_name=None):
 
     pr.disable()
     pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+
+    if search_method == 'backward':
+        order_keys = seq.keys()
+        order_keys.reverse()
+        rev_seq = {}
+        for i in seq.keys():
+            rev_seq[order_keys[i]] = seq[i]
+        seq = rev_seq
+        st_time = time.time()
+        csp = set_cmaps_using_seq(rev_seq, csp)
+        print('pruning time: {0}'.format(time.time() - st_time))
+
+    print('# of assigns: {0}'.format(csp.nassigns))
+    print('# of bt: {0}'.format(csp.nbacktrackings))
+    print('constr check time: {0}'.format(csp.constr_check_time))
+    # print('final seq: {}'.format(seq))
 
     seq_poses = {}
     for i in seq.keys():
@@ -70,31 +121,33 @@ def plan_sequence(robot, obstacles, assembly_network, file_name=None):
 
     remove_body(csp.ee_body)
     if csp.logging and file_name:
-        csp.write_csp_log(file_name)
+        csp.write_csp_log(file_name, log_path=LOG_CSP_PATH)
 
     return seq, seq_poses
 
 def display_trajectories(assembly_network, trajectories, time_step=0.075):
+    disconnect()
     if trajectories is None:
         return
     connect(use_gui=True)
     floor, robot = load_world()
     camera_base_pt = assembly_network.get_end_points(0)[0]
-    camera_pt = np.array(camera_base_pt) + np.array([0.1,0,0.05])
+    camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
     set_camera_pose(tuple(camera_pt), camera_base_pt)
     # wait_for_interrupt()
+
     movable_joints = get_movable_joints(robot)
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
     # connected = set(ground_nodes)
     for trajectory in trajectories:
-    #     if isinstance(trajectory, PrintTrajectory):
-    #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
-    #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
-    #         connected.add(trajectory.n2)
-    #     #wait_for_interrupt()
-    #     #set_color(element_bodies[element], (1, 0, 0, 1))
+        #     if isinstance(trajectory, PrintTrajectory):
+        #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
+        #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
+        #         connected.add(trajectory.n2)
+        #     #wait_for_interrupt()
+        #     #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
         for conf in trajectory: #.path:
@@ -106,8 +159,7 @@ def display_trajectories(assembly_network, trajectories, time_step=0.075):
                 handles.append(add_line(last_point, current_point, color=color))
             last_point = current_point
             wait_for_duration(time_step)
-        #wait_for_interrupt()
-    #user_input('Finish?')
+        # wait_for_interrupt()
 
     wait_for_interrupt()
     disconnect()
@@ -117,14 +169,19 @@ def main(precompute=False):
     parser = argparse.ArgumentParser()
     # four-frame | simple_frame | djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
+    parser.add_argument('-sm', '--search_method', default='b', help='csp search method, b for backward, f for forward.')
+    parser.add_argument('-vom', '--value_order_method', default='sp',
+                        help='value ordering method, sp for special heuristic, random for random value ordering')
+    parser.add_argument('-l', '--use_layer', action='store_true', help='use layer info in the search.')
     # parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     # parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
     parser.add_argument('-s', '--parse_seq', action='store_true', help='parse sequence planning result from a file and proceed to motion planning')
+    parser.add_argument('-d', '--debug', action='store_true', help='Debug mode.')
     args = parser.parse_args()
     print('Arguments:', args)
 
-    elements, node_points, ground_nodes = load_extrusion(args.problem, parse_layers=True)
+    elements, node_points, ground_nodes, file_path = load_extrusion(args.problem, parse_layers=True)
     node_order = list(range(len(node_points)))
 
     # vert indices sanity check
@@ -141,11 +198,6 @@ def main(precompute=False):
     camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
     target_camera_pt = node_points[0]
 
-    if has_gui():
-        pline_handle = draw_model(elements, node_points, ground_nodes)
-        set_camera_pose(tuple(camera_pt), target_camera_pt)
-       # wait_for_interrupt('Continue?')
-
     # create collision bodies
     bodies = create_elements(node_points, [tuple(e.node_ids) for e in elements])
     for e, b in zip(elements, bodies):
@@ -153,12 +205,28 @@ def main(precompute=False):
         # draw_pose(get_pose(b), length=0.004)
 
     assembly_network = AssemblyNetwork(node_points, elements, ground_nodes)
+    assembly_network.compute_traversal_to_ground_dist()
+
+    sc = stiffness_checker(json_file_path=file_path, verbose=False)
+    sc.set_self_weight_load(True)
+    print('test stiffness check on the whole structure: {0}'.format(sc.solve()))
+
+    if has_gui():
+        pline_handle = draw_model(assembly_network, draw_tags=False)
+        set_camera_pose(tuple(camera_pt), target_camera_pt)
+        wait_for_interrupt('Continue?')
 
     use_seq_existing_plan = args.parse_seq
     if not use_seq_existing_plan:
         with LockRenderer():
-            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network, args.problem)
-        write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
+            search_method = SEARCH_METHODS[args.search_method]
+            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network,
+                                                   stiffness_checker=sc,
+                                                   search_method=search_method,
+                                                   value_ordering_method=args.value_order_method,
+                                                   use_layer=args.use_layer,
+                                                   file_name=args.problem)
+        write_eq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
         element_seq, seq_poses = read_seq_json(args.problem)
 
@@ -168,7 +236,16 @@ def main(precompute=False):
     if has_gui():
         # wait_for_interrupt('Press a key to visualize the plan...')
         map(p.removeUserDebugItem, pline_handle)
-        draw_assembly_sequence(assembly_network, element_seq, seq_poses)
+        # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
+
+    # print('Visualizing assembly seq in meshcat...')
+    # vis = meshcat.Visualizer()
+    # try:
+    #     vis.open()
+    # except:
+    #     vis.url()
+    # meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses,
+    #                                     scale=3, time_step=0.5, direction_len=0.025)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
@@ -182,13 +259,11 @@ def main(precompute=False):
 
     trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
 
-    if args.viewer:
-       disconnect()
-       display_trajectories(assembly_network, trajectories)
-
-       print('Quit?')
-       if has_gui():
-           wait_for_interrupt()
+    # if args.viewer:
+    display_trajectories(assembly_network, trajectories, time_step=0.15)
+    print('Quit?')
+    if has_gui():
+        wait_for_interrupt()
 
 if __name__ == '__main__':
     main()

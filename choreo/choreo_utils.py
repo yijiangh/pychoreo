@@ -1,6 +1,7 @@
 import os
 import random
 import time
+import datetime
 import numpy as np
 import pybullet as p
 from itertools import product
@@ -10,15 +11,18 @@ from collections import OrderedDict, namedtuple
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
-    tform_point
+    tform_point, matrix_from_quat
+# from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
 END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
 EE_TOOL_BASE_LINK = 'eef_base_link'
 EE_TOOL_TIP = 'eef_tcp_frame'
 
+SELF_COLLISION_ANGLE = 30.0 * (np.pi / 180)
+
 # end effector direction discretization
-THETA_DISC = 10
+THETA_DISC = 20
 PHI_DISC = 20
 
 WAYPOINT_DISC_LEN = 0.005 # meter
@@ -67,11 +71,16 @@ def draw_element(node_points, element, color=(1, 0, 0)):
 def is_ground(element, ground_nodes):
     return any(n in ground_nodes for n in element.node_ids)
 
-def draw_model(elements, node_points, ground_nodes):
+def draw_model(assembly_network, draw_tags=False):
     handles = []
-    for element in elements:
-        color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
-        handles.append(draw_element(node_points, element, color=color))
+    for element in assembly_network.assembly_elements.values():
+        color = (0, 0, 1) if assembly_network.is_element_grounded(element.e_id) else (1, 0, 0)
+        p1, p2 = assembly_network.get_end_points(element.e_id)
+        handles.append(add_line(p1, p2, color=tuple(color)))
+        if draw_tags:
+            e_mid = (np.array(p1) + np.array(p2)) / 2
+            handles.append(add_text('g_dist=' + str(element.to_ground_dist), position=e_mid, text_size=1))
+
     return handles
 
 def load_end_effector():
@@ -150,9 +159,23 @@ def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disa
 
 def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[]):
     ee_yaw = sample_ee_yaw()
+    ee_tip_from_base = get_tip_from_ee_base(ee_body)
+    print_orientation = make_print_pose(phi, theta, ee_yaw)
+
+    # TODO: this assuming way points form a line
+    assert(len(way_points) >= 2)
+    e_dir = np.array(way_points[1]) - np.array(way_points[0])
+    (_, print_quat) = print_orientation
+    print_z_dir = matrix_from_quat(print_quat)[:,2]
+
+    e_dir = e_dir / np.linalg.norm(e_dir)
+    print_z_dir = print_z_dir / np.linalg.norm(print_z_dir)
+    angle = np.arccos(np.clip(np.dot(e_dir, print_z_dir), -1.0, 1.0))
+    if angle > np.pi - SELF_COLLISION_ANGLE:
+        return True
+
     for way_pt in way_points:
-        ee_tip_from_base = get_tip_from_ee_base(ee_body)
-        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), make_print_pose(phi, theta, ee_yaw))
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
         set_pose(ee_body, world_from_ee_base)
         if exist_e_body:
@@ -165,8 +188,9 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
 
 def check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
     ee_yaw = sample_ee_yaw()
+    print_orientation = make_print_pose(phi, theta, ee_yaw)
     for way_pt in way_points:
-        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), make_print_pose(phi, theta, ee_yaw))
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         conf = sample_tool_ik(robot, world_from_ee_tip)
         if not conf or collision_fn(conf):
             # conf not exist or collision
@@ -207,6 +231,7 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
         entry = 1 means collision-free (still available),  entry=0 means not feasible 
     :return: 
     """
+    # TODO: check n1 -> n2 and self direction
     assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
     p1, p2 = assembly_network.get_end_points(print_along_e_id)
     way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
@@ -228,6 +253,34 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
                     if not check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
                         print_along_cmap[i] = 0
 
+            # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
+
+    return print_along_cmap
+
+def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap,
+                               printed_nodes, bodies=[]):
+    """
+    :param print_along_e_id: element id that end effector is printing along
+    :param exist_e_id: element that is assumed printed, checked against
+    :param print_along_cmap: print_along_element's collsion map, a list of bool,
+        entry = 1 means collision-free (still available),  entry=0 means not feasible
+    :return:
+    """
+    assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
+    e_ns = set(assembly_network.get_element_end_point_ids(print_along_e_id))
+    # TODO: start with larger exist valence node
+    e_ns.difference_update([printed_nodes[0]])
+    way_points = interpolate_straight_line_pts(assembly_network.get_node_point(printed_nodes[0]),
+                                               assembly_network.get_node_point(e_ns.pop()),
+                                               WAYPOINT_DISC_LEN)
+
+    cmap_ids = list(range(len(print_along_cmap)))
+    # random.shuffle(cmap_ids)
+    for i in cmap_ids:
+        if print_along_cmap[i] == 1:
+            phi, theta = cmap_id2angle(i)
+            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies):
+                print_along_cmap[i] = 0
             # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
 
     return print_along_cmap
@@ -263,6 +316,91 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
 
         time.sleep(time_step)
 
+def set_cmaps_using_seq(seq, csp):
+    """following the forward order, prune the cmaps"""
+    # assert(isinstance(csp, AssemblyCSP))
+    built_obstacles = csp.obstacles
+    # print('static obstacles: {}'.format(built_obstacles))
+
+    rec_seq = set()
+    for i in seq.keys():
+        check_e_id = seq[i]
+        # print('------')
+        # print('prune seq #{0} - e{1}'.format(i, check_e_id))
+        # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+        # print('obstables: {}'.format(built_obstacles))
+        # TODO: temporal fix, this should be consistent with the seq search!!!
+        if not csp.net.is_element_grounded(check_e_id):
+            ngbh_e_ids = rec_seq.intersection(csp.net.get_element_neighbor(check_e_id))
+            shared_node = set()
+            for n_e in ngbh_e_ids:
+                shared_node.update([csp.net.get_shared_node_id(check_e_id, n_e)])
+            shared_node = list(shared_node)
+        else:
+            shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
+                           if csp.net.assembly_joints[v_id].is_grounded]
+        assert(shared_node)
+
+        st_time = time.time()
+        while time.time() - st_time < 5:
+            val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int) #csp.cmaps[check_e_id]
+            csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
+                                                               print_along_e_id=check_e_id, print_along_cmap=val_cmap,
+                                                               printed_nodes=shared_node,
+                                                               bodies=built_obstacles)
+            # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
+            if sum(csp.cmaps[check_e_id]) > 0:
+                break
+
+        assert(sum(csp.cmaps[check_e_id]) > 0)
+        built_obstacles = built_obstacles + [csp.net.get_element_body(check_e_id)]
+        rec_seq.update([check_e_id])
+
+    return csp
+
+def check_and_draw_ee_collision(robot, static_obstacles, assembly_network, exist_element_id, check_e_id,
+                                line_width=10, text_size=1, direction_len=0.005):
+    ee_body = load_end_effector()
+    val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
+    built_obstacles = static_obstacles
+    built_obstacles = built_obstacles + [assembly_network.get_element_body(exist_e_id) for exist_e_id in exist_element_id]
+
+    print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
+    print('checking print #{} collision against: '.format(check_e_id))
+    print(sorted(exist_element_id))
+    print('obstables: {}'.format(built_obstacles))
+    val_cmap = update_collision_map_batch(assembly_network, ee_body,
+                                          print_along_e_id=check_e_id, print_along_cmap=val_cmap, bodies=built_obstacles)
+    print('remaining feasible directions: {}'.format(sum(val_cmap)))
+
+    # collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+    #                                 attachments=[], self_collisions=SELF_COLLISIONS,
+    #                                 disabled_collisions=self.disabled_collisions,
+    #                                 custom_limits={})
+    # return check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+
+    # drawing
+    handles = []
+    for e_id in exist_element_id:
+        p1, p2 = assembly_network.get_end_points(e_id)
+        handles.append(add_line(p1, p2, color=np.array([0, 0, 1]), width=line_width))
+
+    p1, p2 = assembly_network.get_end_points(check_e_id)
+    e_mid = (np.array(p1) + np.array(p2)) / 2
+    handles.append(add_line(p1, p2, color=np.array([0, 0, 1]), width=line_width))
+
+    for i in range(len(val_cmap)):
+        if val_cmap[i] == 1:
+            phi, theta = cmap_id2angle(i)
+            cmap_pose = multiply(Pose(point=e_mid), make_print_pose(phi, theta))
+            origin_world = tform_point(cmap_pose, np.zeros(3))
+            axis = np.zeros(3)
+            axis[2] = 1
+            axis_world = tform_point(cmap_pose, direction_len*axis)
+            handles.append(add_line(origin_world, axis_world, color=axis))
+            # handles.append(draw_pose(cmap_pose, direction_len))
+
+
 def write_seq_json(assembly_network, element_seq, seq_poses, file_name):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     file_dir = os.path.join(root_directory, 'results')
@@ -275,6 +413,7 @@ def write_seq_json(assembly_network, element_seq, seq_poses, file_name):
     data = OrderedDict()
     data['assembly_type'] = 'extrusion'
     data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
     data['element_number'] = assembly_network.get_size_of_elements()
     data['support_number'] = assembly_network.get_size_of_grounded_elements()
 
@@ -307,8 +446,7 @@ def read_seq_json(file_name):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     file_dir = os.path.join(root_directory, 'results')
     file_path = os.path.join(file_dir, file_name + '.json')
-    if not os.path.exists(file_dir) or not os.path.exists(file_path):
-        return None, None
+    assert(os.path.exists(file_dir) and os.path.exists(file_path))
     try:
         with open(file_path, 'r') as f:
             json_data = json.loads(f.read())
@@ -326,3 +464,24 @@ def read_seq_json(file_name):
     except Exception as e:
         print('No existing sequence plan found, return False: {}'.format(e))
         return None, None
+
+
+def read_csp_log_json(file_name, specs='', log_path=None):
+    if not log_path:
+        root_directory = os.path.dirname(os.path.abspath(__file__))
+        file_dir = os.path.join(root_directory, 'csp_log')
+    else:
+        file_dir = log_path
+
+    file_path = os.path.join(file_dir, file_name + '_' + specs + '_csp_log.json')
+
+    assert(os.path.exists(file_dir) and os.path.exists(file_path))
+    with open(file_path, 'r') as f:
+        json_data = json.loads(f.read())
+        assert(json_data.has_key('assign_history'))
+        assign_history = {}
+        for k in json_data['assign_history'].keys():
+            assign_history[int(k)] = json_data['assign_history'][k].values()
+        # print(assign_history)
+        print('csp_log parse: {}'.format(file_path))
+        return assign_history
