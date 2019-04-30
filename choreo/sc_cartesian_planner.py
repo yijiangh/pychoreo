@@ -428,12 +428,30 @@ class SparseLadderGraph(object):
         disabled_collisions = get_disabled_collisions(robot)
         built_obstacles = static_obstacles
 
+        seq = set()
         for i in element_seq.keys():
             e_id = element_seq[i]
-            p1, p2 = assembly_network.get_end_points(e_id)
+            # TODO: temporal fix, this should be consistent with the seq search!!!
+            if not assembly_network.is_element_grounded(e_id):
+                ngbh_e_ids = seq.intersection(assembly_network.get_element_neighbor(e_id))
+                shared_node = set()
+                for n_e in ngbh_e_ids:
+                    shared_node.update([assembly_network.get_shared_node_id(e_id, n_e)])
+                shared_node = list(shared_node)
+            else:
+                shared_node = [v_id for v_id in assembly_network.get_element_end_point_ids(e_id)
+                               if assembly_network.assembly_joints[v_id].is_grounded]
+            assert(shared_node)
+
+            e_ns = set(assembly_network.get_element_end_point_ids(e_id))
+            e_ns.difference_update([shared_node[0]])
+            way_points = interpolate_straight_line_pts(assembly_network.get_node_point(shared_node[0]),
+                                                       assembly_network.get_node_point(e_ns.pop()),
+                                                       WAYPOINT_DISC_LEN)
+
             e_body = assembly_network.get_element_body(e_id)
             cap_rung = CapRung()
-            cap_rung.path_pts = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
+            cap_rung.path_pts = way_points
 
             assert(seq_poses[i])
             cap_rung.ee_dirs = seq_poses[i]
@@ -443,6 +461,7 @@ class SparseLadderGraph(object):
                                         custom_limits={})
             self.cap_rungs.append(cap_rung)
             built_obstacles.append(e_body)
+            seq.update([e_id])
 
     def find_sparse_path(self, max_time=0.0):
         # if max_time < 5:

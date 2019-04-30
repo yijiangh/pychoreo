@@ -1,6 +1,7 @@
 import os
 import random
 import time
+import datetime
 import numpy as np
 import pybullet as p
 from itertools import product
@@ -10,13 +11,15 @@ from collections import OrderedDict, namedtuple
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
-    tform_point
+    tform_point, matrix_from_quat
 # from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
 END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
 EE_TOOL_BASE_LINK = 'eef_base_link'
 EE_TOOL_TIP = 'eef_tcp_frame'
+
+SELF_COLLISION_ANGLE = 30.0 * (np.pi / 180)
 
 # end effector direction discretization
 THETA_DISC = 20
@@ -159,6 +162,18 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
     ee_tip_from_base = get_tip_from_ee_base(ee_body)
     print_orientation = make_print_pose(phi, theta, ee_yaw)
 
+    # TODO: this assuming way points form a line
+    assert(len(way_points) >= 2)
+    e_dir = np.array(way_points[1]) - np.array(way_points[0])
+    (_, print_quat) = print_orientation
+    print_z_dir = matrix_from_quat(print_quat)[:,2]
+
+    e_dir = e_dir / np.linalg.norm(e_dir)
+    print_z_dir = print_z_dir / np.linalg.norm(print_z_dir)
+    angle = np.arccos(np.clip(np.dot(e_dir, print_z_dir), -1.0, 1.0))
+    if angle > np.pi - SELF_COLLISION_ANGLE:
+        return True
+
     for way_pt in way_points:
         world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
@@ -216,6 +231,7 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
         entry = 1 means collision-free (still available),  entry=0 means not feasible 
     :return: 
     """
+    # TODO: check n1 -> n2 and self direction
     assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
     p1, p2 = assembly_network.get_end_points(print_along_e_id)
     way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
@@ -241,7 +257,8 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
 
     return print_along_cmap
 
-def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap, bodies=[]):
+def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap,
+                               printed_nodes, bodies=[]):
     """
     :param print_along_e_id: element id that end effector is printing along
     :param exist_e_id: element that is assumed printed, checked against
@@ -250,8 +267,12 @@ def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, prin
     :return:
     """
     assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
-    p1, p2 = assembly_network.get_end_points(print_along_e_id)
-    way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
+    e_ns = set(assembly_network.get_element_end_point_ids(print_along_e_id))
+    # TODO: start with larger exist valence node
+    e_ns.difference_update([printed_nodes[0]])
+    way_points = interpolate_straight_line_pts(assembly_network.get_node_point(printed_nodes[0]),
+                                               assembly_network.get_node_point(e_ns.pop()),
+                                               WAYPOINT_DISC_LEN)
 
     cmap_ids = list(range(len(print_along_cmap)))
     # random.shuffle(cmap_ids)
@@ -296,21 +317,36 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
         time.sleep(time_step)
 
 def set_cmaps_using_seq(seq, csp):
+    """following the forward order, prune the cmaps"""
     # assert(isinstance(csp, AssemblyCSP))
     built_obstacles = csp.obstacles
     # print('static obstacles: {}'.format(built_obstacles))
+
+    rec_seq = set()
     for i in seq.keys():
         check_e_id = seq[i]
         # print('------')
         # print('prune seq #{0} - e{1}'.format(i, check_e_id))
         # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
         # print('obstables: {}'.format(built_obstacles))
+        # TODO: temporal fix, this should be consistent with the seq search!!!
+        if not csp.net.is_element_grounded(check_e_id):
+            ngbh_e_ids = rec_seq.intersection(csp.net.get_element_neighbor(check_e_id))
+            shared_node = set()
+            for n_e in ngbh_e_ids:
+                shared_node.update([csp.net.get_shared_node_id(check_e_id, n_e)])
+            shared_node = list(shared_node)
+        else:
+            shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
+                           if csp.net.assembly_joints[v_id].is_grounded]
+        assert(shared_node)
 
         st_time = time.time()
         while time.time() - st_time < 5:
             val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int) #csp.cmaps[check_e_id]
             csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
                                                                print_along_e_id=check_e_id, print_along_cmap=val_cmap,
+                                                               printed_nodes=shared_node,
                                                                bodies=built_obstacles)
             # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
             if sum(csp.cmaps[check_e_id]) > 0:
@@ -318,6 +354,8 @@ def set_cmaps_using_seq(seq, csp):
 
         assert(sum(csp.cmaps[check_e_id]) > 0)
         built_obstacles = built_obstacles + [csp.net.get_element_body(check_e_id)]
+        rec_seq.update([check_e_id])
+
     return csp
 
 def check_and_draw_ee_collision(robot, static_obstacles, assembly_network, exist_element_id, check_e_id,
@@ -375,6 +413,7 @@ def write_seq_json(assembly_network, element_seq, seq_poses, file_name):
     data = OrderedDict()
     data['assembly_type'] = 'extrusion'
     data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
     data['element_number'] = assembly_network.get_size_of_elements()
     data['support_number'] = assembly_network.get_size_of_grounded_elements()
 
@@ -427,17 +466,14 @@ def read_seq_json(file_name):
         return None, None
 
 
-def read_csp_log_json(file_name, check_backward_search=True, log_path=None):
+def read_csp_log_json(file_name, specs='', log_path=None):
     if not log_path:
         root_directory = os.path.dirname(os.path.abspath(__file__))
         file_dir = os.path.join(root_directory, 'csp_log')
     else:
         file_dir = log_path
 
-    if check_backward_search:
-        file_path = os.path.join(file_dir, file_name + '_backward_csp_log.json')
-    else:
-        file_path = os.path.join(file_dir, file_name + '_forward_csp_log.json')
+    file_path = os.path.join(file_dir, file_name + '_' + specs + '_csp_log.json')
 
     assert(os.path.exists(file_dir) and os.path.exists(file_path))
     with open(file_path, 'r') as f:

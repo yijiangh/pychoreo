@@ -2,6 +2,7 @@ import numpy as np
 from copy import copy
 import time
 import random
+import datetime
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import get_movable_joints, get_collision_fn
 
@@ -13,6 +14,7 @@ from .csp import CSP, UniversalDict
 from .csp_utils import count
 from .choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector, check_exist_valid_kinematics, \
     update_collision_map_batch
+from pyconmech import stiffness_checker
 
 SELF_COLLISIONS = False
 
@@ -26,7 +28,8 @@ class AssemblyCSP(CSP):
     needs to keep track of a feasible direction map for each domain value (element_id)
 
     """
-    def __init__(self, robot=None, obstacles=[], assembly_network=None, search_method=None, use_layer=True):
+    def __init__(self, robot=None, obstacles=[], assembly_network=None, stiffness_checker=None,
+                 vom=None, search_method=None, use_layer=True):
         self.search_method = search_method
 
         assert(isinstance(assembly_network, AssemblyNetwork))
@@ -34,11 +37,12 @@ class AssemblyCSP(CSP):
         decomposed_domains = {}
         layer_ids = assembly_network.get_layers()
 
-        assert(search_method)
+        assert(search_method and vom)
         if self.search_method == 'forward':
             layer_ids.sort()
         if self.search_method == 'backward':
             layer_ids.sort(reverse=True)
+        self.vom = vom
 
         if use_layer:
             for l_id in layer_ids:
@@ -61,6 +65,7 @@ class AssemblyCSP(CSP):
         for e_id in range(n):
             self.cmaps[e_id] = np.ones(PHI_DISC * THETA_DISC, dtype=int)
         self.ee_body = load_end_effector()
+        self.stiffness_checker = stiffness_checker
 
         self.constr_check_time = {}
         self.constr_check_time['connect'] = {}
@@ -70,6 +75,10 @@ class AssemblyCSP(CSP):
         self.constr_check_time['exist_valid_ee_pose'] = {}
         self.constr_check_time['exist_valid_ee_pose'][1] = 0
         self.constr_check_time['exist_valid_ee_pose'][0] = 0
+
+        self.constr_check_time['stiffness'] = {}
+        self.constr_check_time['stiffness'][1] = 0
+        self.constr_check_time['stiffness'][0] = 0
 
     def nconflicts(self, var, val, assignment):
         """Return the number of conflicts var=val has with other variables."""
@@ -125,7 +134,13 @@ class AssemblyCSP(CSP):
                 return success
 
         def stiffness(self, var, val, assignment):
-            return True
+            exist_e_ids = list(set(range(len(self.variables))).difference(assignment.values() + [val]))
+            if exist_e_ids:
+                success = self.stiffness_checker.solve(exist_e_ids)
+            else:
+                success = True
+            self.constr_check_time['stiffness'][success] += 1
+            return success
 
         def stability(self, var, val, assignment):
             return True
@@ -150,6 +165,7 @@ class AssemblyCSP(CSP):
                         if k == var:
                             continue
                         exist_e_id = assignment[k]
+                        # TODO: check print nodal direction n1 -> n2
                         val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
                         if sum(val_cmap) == 0:
                             success = False
@@ -161,6 +177,16 @@ class AssemblyCSP(CSP):
                     # TODO: only check current layer's value?
                     # TODO: these set difference stuff should use domain value
                     unassigned_vals = list(set(range(len(self.variables))).difference(assignment.values()))
+                    if not self.net.is_element_grounded(val):
+                        ngbh_e_ids = set(self.net.get_element_neighbor(val)).intersection(unassigned_vals)
+                        shared_node = set()
+                        for n_e in ngbh_e_ids:
+                            shared_node.update([self.net.get_shared_node_id(val, n_e)])
+                        shared_node = list(shared_node)
+                    else:
+                        shared_node = [v_id for v_id in self.net.get_element_end_point_ids(val)
+                                       if self.net.assembly_joints[v_id].is_grounded]
+                    assert(shared_node)
 
                     # everytime we start fresh
                     # val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int)
@@ -172,7 +198,8 @@ class AssemblyCSP(CSP):
 
                     built_obstacles = built_obstacles + [self.net.get_element_body(unass_val) for unass_val in unassigned_vals]
                     val_cmap = update_collision_map_batch(self.net, self.ee_body,
-                                                          print_along_e_id=val, print_along_cmap=val_cmap, bodies=built_obstacles)
+                                                          print_along_e_id=val, print_along_cmap=val_cmap,
+                                                          printed_nodes=shared_node, bodies=built_obstacles)
 
                     # print('after pruning, cmaps sum: {}'.format(sum(val_cmap)))
                     # print('-----')
@@ -190,8 +217,7 @@ class AssemblyCSP(CSP):
                 self.constr_check_time['exist_valid_ee_pose'][success] += 1
                 return success
 
-
-        constraint_fns = [alldiff, connect, exist_valid_ee_pose]
+        constraint_fns = [alldiff, connect, exist_valid_ee_pose, stiffness]
 
         violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
         # print('constraint violation: {}'.format(violation))
@@ -276,16 +302,21 @@ class AssemblyCSP(CSP):
         else:
             file_dir = log_path
 
-        file_path = os.path.join(file_dir, file_name + '_' + self.search_method + '_csp_log' + '.json')
+        file_path = os.path.join(file_dir, file_name + '_'
+                                 + self.search_method + '_'
+                                 + self.vom + '_csp_log' + '.json')
         if not os.path.exists(file_path):
             open(file_path, "w+").close()
 
         data = OrderedDict()
         data['assembly_type'] = 'extrusion'
         data['file_name'] = file_name
+        data['write_time'] = str(datetime.datetime.now())
         data['element_number'] = self.net.get_size_of_elements()
         data['support_number'] = self.net.get_size_of_grounded_elements()
 
+        data['search_method'] = self.search_method
+        data['value_order_method'] = self.vom
         data['number_assigns'] = self.nassigns
         data['number_backtracks'] = self.nbacktrackings
         data['solve_time_util_stop'] = time.time() - self.start_time

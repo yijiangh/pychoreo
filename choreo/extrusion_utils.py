@@ -59,7 +59,7 @@ def load_extrusion(extrusion_name, parse_layers=False):
     print('Nodes: {} | Ground: {} | Elements: {}'.format(
         len(node_points), len(ground_nodes), len(elements)))
 
-    return elements, node_points, ground_nodes
+    return elements, node_points, ground_nodes, extrusion_path
 
 def parse_point(json_point, scale=DEFAULT_SCALE):
     return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])

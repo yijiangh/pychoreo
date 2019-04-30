@@ -67,6 +67,16 @@ class AssemblyNetwork(object):
             ngbh_ids.extend([e_id for e_id in self.assembly_joints[end_node_id].neighbor_e_ids if e_id != element_id])
         return ngbh_ids
 
+    def get_node_point(self, v_id):
+        return self.assembly_joints[v_id].node_point
+
+    def get_shared_node_id(self, e1, e2):
+        e1_ends = set(self.assembly_elements[e1].node_ids)
+        e2_ends = list(self.assembly_elements[e2].node_ids)
+        shared_nodes = e1_ends.intersection(e2_ends)
+        assert(shared_nodes and len(shared_nodes)==1, "e1 e2 should not be neighbor or coincided")
+        return shared_nodes.pop()
+
     def get_node_neighbor(self, node_id):
         return self.assembly_joints[node_id].neighbor_e_ids
 

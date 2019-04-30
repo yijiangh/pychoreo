@@ -16,6 +16,8 @@ from choreo.extrusion_utils import create_elements, \
     load_extrusion, load_world
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
+from pyconmech import stiffness_checker
+
 from .assembly_datastructure import AssemblyNetwork
 from .csp import backtracking_search
 from .assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
@@ -37,6 +39,7 @@ SEARCH_METHODS = {
 }
 
 def plan_sequence(robot, obstacles, assembly_network,
+                  stiffness_checker=None,
                   search_method='backward', value_ordering_method='random', use_layer=True, file_name=None):
     pr = cProfile.Profile()
     pr.enable()
@@ -52,10 +55,14 @@ def plan_sequence(robot, obstacles, assembly_network,
     # layer_size = max(element_group_ids.keys())
 
     # generate AssemblyCSP problem
-    csp = AssemblyCSP(robot, obstacles, search_method=search_method, assembly_network=assembly_network, use_layer=use_layer)
-    csp.logging = LOG_CSP
-    print('search method: {0}\n, value ordering method: {1}\n, use_layer: {2}'.format(
+    print('search method: {0},\nvalue ordering method: {1},\nuse_layer: {2}'.format(
         search_method, value_ordering_method, use_layer))
+    csp = AssemblyCSP(robot, obstacles, assembly_network=assembly_network,
+                      stiffness_checker=stiffness_checker,
+                      search_method=search_method,
+                      vom=value_ordering_method,
+                      use_layer=use_layer)
+    csp.logging = LOG_CSP
 
     try:
         if search_method == 'forward':
@@ -174,7 +181,7 @@ def main(precompute=False):
     args = parser.parse_args()
     print('Arguments:', args)
 
-    elements, node_points, ground_nodes = load_extrusion(args.problem, parse_layers=True)
+    elements, node_points, ground_nodes, file_path = load_extrusion(args.problem, parse_layers=True)
     node_order = list(range(len(node_points)))
 
     # vert indices sanity check
@@ -200,17 +207,9 @@ def main(precompute=False):
     assembly_network = AssemblyNetwork(node_points, elements, ground_nodes)
     assembly_network.compute_traversal_to_ground_dist()
 
-    # debug chuck
-    # if args.debug:
-    #     set_camera_pose(tuple(camera_pt), target_camera_pt)
-    #
-    #     exist_element_ids = [12, 14, 15, 16, 17, 18] #[14, 15, 16, 17, 18]
-    #     check_e_id = 9 #12
-    #     check_and_draw_ee_collision(robot, obstacles, assembly_network, exist_element_ids, check_e_id)
-    #
-    #     wait_for_interrupt('Continue?')
-    #     return
-    # end debug chuck
+    sc = stiffness_checker(json_file_path=file_path, verbose=False)
+    sc.set_self_weight_load(True)
+    print('test stiffness check on the whole structure: {0}'.format(sc.solve()))
 
     if has_gui():
         pline_handle = draw_model(assembly_network, draw_tags=False)
@@ -222,11 +221,12 @@ def main(precompute=False):
         with LockRenderer():
             search_method = SEARCH_METHODS[args.search_method]
             element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network,
+                                                   stiffness_checker=sc,
                                                    search_method=search_method,
                                                    value_ordering_method=args.value_order_method,
                                                    use_layer=args.use_layer,
                                                    file_name=args.problem)
-        write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
+        write_eq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
         element_seq, seq_poses = read_seq_json(args.problem)
 
@@ -238,14 +238,14 @@ def main(precompute=False):
         map(p.removeUserDebugItem, pline_handle)
         # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
 
-    print('Visualizing assembly seq in meshcat...')
-    vis = meshcat.Visualizer()
-    try:
-        vis.open()
-    except:
-        vis.url()
-    meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses,
-                                        scale=3, time_step=0.5, direction_len=0.025)
+    # print('Visualizing assembly seq in meshcat...')
+    # vis = meshcat.Visualizer()
+    # try:
+    #     vis.open()
+    # except:
+    #     vis.url()
+    # meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses,
+    #                                     scale=3, time_step=0.5, direction_len=0.025)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
