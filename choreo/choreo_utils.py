@@ -15,6 +15,8 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
 # from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
+DEFAULT_SCALE = 1e-3 # TODO: load different scales
+
 END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
 EE_TOOL_BASE_LINK = 'eef_base_link'
 EE_TOOL_TIP = 'eef_tcp_frame'
@@ -227,9 +229,9 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
     """
     :param print_along_e_id: element id that end effector is printing along
     :param exist_e_id: element that is assumed printed, checked against
-    :param print_along_cmap: print_along_element's collsion map, a list of bool, 
-        entry = 1 means collision-free (still available),  entry=0 means not feasible 
-    :return: 
+    :param print_along_cmap: print_along_element's collsion map, a list of bool,
+        entry = 1 means collision-free (still available),  entry=0 means not feasible
+    :return:
     """
     # TODO: check n1 -> n2 and self direction
     assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
@@ -485,3 +487,22 @@ def read_csp_log_json(file_name, specs='', log_path=None):
         # print(assign_history)
         print('csp_log parse: {}'.format(file_path))
         return assign_history
+
+
+def parse_point(json_point, scale=DEFAULT_SCALE):
+    # TODO: should be changed to list
+    return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])
+
+
+def parse_rhino_transform(json_transform):
+    transform = np.eye(4)
+    transform[:3, 3] = parse_point(json_transform['Origin']) # Normal
+    transform[:3, :3] = np.vstack([parse_point(json_transform[axis], scale=DEFAULT_SCALE)
+                                   for axis in ['XAxis', 'YAxis', 'ZAxis']])
+    return transform
+
+
+def parse_transform(json_tf, scale=DEFAULT_SCALE):
+    tf = np.vstack([json_tf[i*4:i*4 + 4] for i in range(4)])
+    tf[:3, 3] *= scale
+    return tf

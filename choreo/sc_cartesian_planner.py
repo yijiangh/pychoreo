@@ -38,7 +38,7 @@ class LadderGraphEdge(object):
 class LadderGraphRung(object):
     def __init__(self, id=None, data=[], edges=[], collision_fn=None):
         self.id = id
-        self.data = data #joint_data: joint values are stored in one contiguous list
+        self.data = data # joint_data: joint values are stored in one contiguous list
         self.edges = edges
 
         #TODO: collision bodies or collision fn
@@ -47,7 +47,6 @@ class LadderGraphRung(object):
     def __repr__(self):
         return 'id {0}, data {1}, edge num {2}'.format(self.id, len(self.data), len(self.edges))
 
-#= namedtuple('LadderGraphRung', ['id', 'joint_data', 'edges'])
 # TODO: we ignore the timing constraint here
 
 class LadderGraph(object):
