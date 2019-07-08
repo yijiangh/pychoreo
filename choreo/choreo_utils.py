@@ -30,6 +30,7 @@ PHI_DISC = 20
 WAYPOINT_DISC_LEN = 0.005 # meter
 KINEMATICS_CHECK_TIMEOUT = 2
 
+
 class MotionTrajectory(object):
     def __init__(self, robot, joints, path, attachments=[]):
         self.robot = robot
@@ -214,6 +215,7 @@ def check_exist_valid_kinematics(assembly_network, e_id, robot, cmap, collision_
         if time.time() - st_time > KINEMATICS_CHECK_TIMEOUT:
             return False
 
+
 def interpolate_straight_line_pts(p1, p2, disc_len):
     p1 = np.array(p1)
     p2 = np.array(p2)
@@ -221,9 +223,11 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
     return map(tuple, [p1 + t*(p2-p1)/e_len for t in advance])
 
+
 def generate_way_point_poses(p1, p2, phi, theta, ee_yaw, disc_len):
     way_points = interpolate_straight_line_pts(p1, p2, disc_len)
     return [multiply(Pose(point=pt), make_print_pose(phi, theta, ee_yaw)) for pt in way_points]
+
 
 def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id, print_along_cmap, static_bodies=[], check_ik=False, robot=None, collision_fn=None):
     """

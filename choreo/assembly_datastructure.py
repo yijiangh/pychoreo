@@ -5,6 +5,13 @@ import numpy as np
 def tuple_l2norm(p1, p2):
     return math.sqrt(sum([pow((float(p1_i) - float(p2_i)),2) for p1_i, p2_i in zip(p1, p2)]))
 
+
+# TODO: merge into AssemblyElement object
+Brick = namedtuple('Brick', ['index', 'body', 'initial_pose', 'goal_pose',
+                             'grasps', 'goal_supports'])
+
+##################################################
+
 # a spatial assembly network for easier node/eleement query
 class AssemblyJoint(object):
     def __init__(self, node_point, node_id, is_grounded=False):

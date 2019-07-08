@@ -18,7 +18,8 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, \
 read_seq_json, cmap_id2angle, EEDirection, check_and_draw_ee_collision, \
 set_cmaps_using_seq, parse_transform
-from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
+from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph, direct_ladder_graph_solve_picknplace
+from choreo.assembly_datastructure import Brick
 try:
     from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 except ImportError as e:
@@ -39,9 +40,6 @@ SELF_COLLISIONS = False
 MILLIMETER = 0.001
 
 ##################################################
-
-Brick = namedtuple('Brick', ['index', 'body', 'initial_pose', 'goal_pose',
-                             'grasps', 'goal_supports'])
 
 def plan_sequence(robot, obstacles, assembly_network,
                   stiffness_checker=None,
@@ -97,7 +95,6 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
 
         obj_from_ee_grasp_poses = [pose_from_tform(parse_transform(json_tf)) \
                                     for json_tf in json_element['grasps']['ee_poses']]
-
         # pick_grasp_plane is at the top of the object with z facing downwards
 
         # ee_from_obj = invert(world_from_obj_pick) # Using pick frame
@@ -112,30 +109,30 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         multiply(place_parent_frame, pose_from_tform(parse_transform(json_element['assembly_process']['place']['object_target_pose'])))
 
         set_pose(pick_body, world_from_obj_place)
-        draw_pose(world_from_obj_pick, length=0.04)
-        draw_pose(world_from_obj_place, length=0.04)
-        for ee_p in obj_from_ee_grasp_poses:
-            draw_pose(multiply(world_from_obj_pick, ee_p), length=0.04)
-            draw_pose(multiply(world_from_obj_place, ee_p), length=0.04)
+        # draw_pose(world_from_obj_pick, length=0.04)
+        # draw_pose(world_from_obj_place, length=0.04)
+        # for ee_p in obj_from_ee_grasp_poses:
+        #     draw_pose(multiply(world_from_obj_pick, ee_p), length=0.04)
+        #     draw_pose(multiply(world_from_obj_place, ee_p), length=0.04)
 
         # TODO: pick and place might have different approach tfs
         ee_from_approach_tf = pose_from_tform(parse_transform(json_element['assembly_process']['place']['grasp_from_approach_tf']))
-        ee_from_obj_grasps = [Grasp(index, grasp_id, \
-                                    invert(multiply(obj_from_ee_pose, ee_from_approach_tf)),
-                                    invert(obj_from_ee_pose),
-                                    invert(multiply(obj_from_ee_pose, ee_from_approach_tf)),
+        obj_from_ee_grasps = [Grasp(index, grasp_id, \
+                                    multiply(obj_from_ee_pose, ee_from_approach_tf),
+                                    obj_from_ee_pose,
+                                    multiply(obj_from_ee_pose, ee_from_approach_tf),
                                      ) \
                               for grasp_id, obj_from_ee_pose in enumerate(obj_from_ee_grasp_poses)]
 
-        print(ee_from_approach_tf)
-        for ee_p in obj_from_ee_grasp_poses:
-            draw_pose(multiply(world_from_obj_pick, ee_p, ee_from_approach_tf), length=0.04)
-            draw_pose(multiply(world_from_obj_place, ee_p, ee_from_approach_tf), length=0.04)
+        # # draw approach poses
+        # for ee_p in obj_from_ee_grasp_poses:
+        #     draw_pose(multiply(world_from_obj_pick, ee_p, ee_from_approach_tf), length=0.04)
+        #     draw_pose(multiply(world_from_obj_place, ee_p, ee_from_approach_tf), length=0.04)
 
         brick_from_index[index] = Brick(index=index, body=pick_body,
-                                        initial_pose=WorldPose(index, world_from_obj_pick),
-                                        goal_pose=WorldPose(index, world_from_obj_place),
-                                        grasps=ee_from_obj_grasps,
+                                        initial_pose=world_from_obj_pick,
+                                        goal_pose=world_from_obj_place,
+                                        grasps=obj_from_ee_grasps,
                                         goal_supports=[]) #json_element.get('place_contact_ngh_ids', [])
         # pick_contact_ngh_ids are movable element contact partial orders
         # pick_support_surface_file_names are fixed element contact partial orders
@@ -212,8 +209,7 @@ def main(precompute=False):
     #     set_camera_pose(tuple(camera_pt), target_camera_pt)
     print('Continue?')
     wait_for_interrupt()
-
-    use_seq_existing_plan = args.parse_seq
+    # use_seq_existing_plan = args.parse_seq
 
     ####################
     # sequence planning completed
@@ -226,8 +222,11 @@ def main(precompute=False):
     # assume that the robot's dof is all included in the ikfast model
     print('start sc motion planning.')
 
-    # with LockRenderer():
-    #     # tot_traj, graph_sizes = direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, obstacles)
+    # default sequence
+    seq_assignment = list(range(len(brick_from_index)))
+    element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
+    with LockRenderer():
+        tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name)
     #     sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, obstacles)
     #     sg.find_sparse_path(max_time=2)
     #     tot_traj, graph_sizes = sg.extract_solution()

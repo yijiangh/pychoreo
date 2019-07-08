@@ -6,8 +6,8 @@ from .choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_
     make_print_pose, sample_ee_yaw
 
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
-from assembly_datastructure import AssemblyNetwork
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, get_movable_joints, multiply
+from assembly_datastructure import AssemblyNetwork, Brick
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, get_movable_joints, multiply, Attachment
 from choreo.extrusion_utils import get_disabled_collisions
 
 DEBUG=True
@@ -161,6 +161,7 @@ class EdgeBuilder(object):
 
 def generate_ladder_graph_from_poses(robot, dof, pose_list, collision_fn=lambda x: False, dt=-1):
     # TODO: lazy collision check
+    # TODO: dt, timing constraint
     graph = LadderGraph(dof)
     graph.resize(len(pose_list))
 
@@ -194,6 +195,91 @@ def generate_ladder_graph_from_poses(robot, dof, pose_list, collision_fn=lambda 
             print('no edges!')
 
         graph.assign_edges(i, edges)
+    return graph
+
+
+def concatenate_graph_vertically(graph_above, graph_below):
+    assert isinstance(graph_above, LadderGraph)
+    assert isinstance(graph_below, LadderGraph)
+    assert graph_above.size() == graph_below.size() # same number of rungs
+    num_rungs = graph_above.size()
+    for i in range(num_rungs):
+        rung_above = graph_above.get_rung(i)
+        above_jts = graph_above.get_rung(i).data
+        below_jts = graph_below.get_rung(i).data
+        above_jts.extend(below_jts)
+        if i != num_rungs - 1:
+            # shifting target vert id in below_edges
+            next_above_rung_size = graph_below.get_rung_vert_size(i + 1)
+            below_edges = graph_below.get_edges(i)
+            for e in below_edges:
+                e_copy = deepcopy(e)
+                e_copy.idx += next_above_rung_size
+                rung_above.edges.append(e_copy)
+    return graph_above
+
+
+def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, collision_fns, disc_len):
+    # TODO: lazy collision check
+    # TODO: dt, timing constraint
+
+    assert(isinstance(brick, Brick))
+    vertical_graph = LadderGraph(dof)
+    # graph.resize(len(pose_list))
+
+    # generate path pts
+    grasps = brick.grasps
+    for grasp in grasps:
+        graph = LadderGraph(dof)
+        approach_pts = interpolate_straight_line_pts(grasp.approach[0], grasp.attach[0], disc_len)
+        retreat_pts = interpolate_straight_line_pts(grasp.attach[0], grasp.retreat[0], disc_len)
+        # TODO: slerp interpolation on poses
+        def pts2poses(pts, euler):
+            return [Pose(point=pt, euler=euler) for pt in pts]
+        path_poses = [pts2poses(approach_pts), pts2poses(approach_pts), \
+                      pts2poses(approach_pts), pts2poses(approach_pts.reverse())]
+
+        collision_fns = []
+        attachment = Attachment(robot, tool_link, grasp.attach, body)
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), built_obstacles,
+                                              attachments=[], self_collisions=SELF_COLLISIONS,
+                                              disabled_collisions=disabled_collisions,
+                                              custom_limits={}))
+
+        # solve ik for each pose, build all rungs (w/o edges)
+        for proc_id, path_list in enumerate(path_lists):
+            for i, pose in enumerate(pose_list):
+                # TODO: special sampler for 6+ extra dofs
+                jt_list = sample_tool_ik(robot, pose, get_all=True)
+                jt_list = [jts for jts in jt_list if jts and not collision_fn(jts)]
+                if not jt_list or all(not jts for jts in jt_list):
+                   return None
+                graph.assign_rung(i, jt_list)
+
+            # build edges
+            for i in range(graph.get_rungs_size()-1):
+                st_id = i
+                end_id = i + 1
+                jt1_list = graph.get_data(st_id)
+                jt2_list = graph.get_data(end_id)
+                st_size = graph.get_rung_vert_size(st_id)
+                end_size = graph.get_rung_vert_size(end_id)
+                edge_builder = EdgeBuilder(st_size, end_size, dof)
+
+                for k in range(st_size):
+                    st_id = k * dof
+                    for j in range(end_size):
+                        end_id = j * dof
+                        edge_builder.consider(jt1_list[st_id : st_id+dof], jt2_list[end_id : end_id+dof], j)
+                    edge_builder.next(k)
+
+                edges = edge_builder.result
+                if not edge_builder.has_edges and DEBUG:
+                    print('no edges!')
+
+                graph.assign_edges(i, edges)
+
+        concatenate_graph_vertically(vertical_graph, graph)
     return graph
 
 class SolutionRung(object):
@@ -559,7 +645,7 @@ class SparseLadderGraph(object):
 
         return tot_traj, graph_indices
 
-def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, obstacles):
+def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, obstacles, assembly_type='picknplace'):
     dof = len(get_movable_joints(robot))
     graph_list = []
     built_obstacles = obstacles
@@ -586,6 +672,36 @@ def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, o
                if time.time() - st_time > 5:
                    break
            built_obstacles.append(assembly_network.get_element_body(e_id))
+
+    unified_graph = LadderGraph(dof)
+    for g in graph_list:
+        unified_graph = append_ladder_graph(unified_graph, g)
+
+    dag_search = DAGSearch(unified_graph)
+    dag_search.run()
+    graph_sizes = [g.size for g in graph_list]
+    tot_traj = dag_search.shortest_path()
+    return tot_traj, graph_sizes
+
+
+def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, tool_link):
+    dof = len(get_movable_joints(robot))
+    graph_list = []
+    built_obstacles = obstacle_from_name
+    disabled_collisions = get_disabled_collisions(robot)
+
+    for seq_id, e_id in element_seq.items():
+        brick = brick_from_index[e_id]
+
+        graph = generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, WAYPOINT_DISC_LEN, tool_link, built_obstacles)
+        if graph is not None:
+            # print(graph)
+            graph_list.append(graph)
+        else:
+            assert('graph empty at brick #{0} at seq #{1}'.format(e_id, seq_id))
+
+        # set_pose(brick.body, brick.targe_pose)
+        built_obstacles.append(brick.body)
 
     unified_graph = LadderGraph(dof)
     for g in graph_list:
