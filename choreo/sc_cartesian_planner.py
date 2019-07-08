@@ -34,7 +34,6 @@ class LadderGraphEdge(object):
     def __repr__(self):
         return 'E idx{0}, cost{1}'.format(self.idx, self.cost)
 
-#= namedtuple('LadderGraphEdge', ['cost', 'idx'])
 
 class LadderGraphRung(object):
     def __init__(self, id=None, data=[], edges=[], collision_fn=None):
