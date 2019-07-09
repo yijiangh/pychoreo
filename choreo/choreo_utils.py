@@ -11,7 +11,7 @@ from collections import OrderedDict, namedtuple
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
-    tform_point, matrix_from_quat
+    tform_point, matrix_from_quat, euler_from_quat
 # from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
@@ -27,7 +27,7 @@ SELF_COLLISION_ANGLE = 30.0 * (np.pi / 180)
 THETA_DISC = 20
 PHI_DISC = 20
 
-WAYPOINT_DISC_LEN = 0.005 # meter
+WAYPOINT_DISC_LEN = 0.1 # meter
 KINEMATICS_CHECK_TIMEOUT = 2
 
 
@@ -223,6 +223,17 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
     return map(tuple, [p1 + t*(p2-p1)/e_len for t in advance])
 
+def interpolate_cartesian_poses(pose_1, pose_2, disc_len):
+    p1 = np.array(pose_1[0])
+    p2 = np.array(pose_2[0])
+    e_len = np.linalg.norm(p1 - p2)
+    advance = np.append(np.arange(0, e_len, disc_len), e_len)
+
+    e1 = euler_from_quat(pose_1[1])
+    e2 = euler_from_quat(pose_2[1])
+    # TODO: slerp interpolation on poses
+
+    return [Pose(point=(p1 + t*(p2-p1)/e_len), euler=e1) for t in advance]
 
 def generate_way_point_poses(p1, p2, phi, theta, ee_yaw, disc_len):
     way_points = interpolate_straight_line_pts(p1, p2, disc_len)

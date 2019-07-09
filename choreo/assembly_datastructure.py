@@ -1,6 +1,7 @@
 import math
 import numpy as np
 # from profilehooks import timecall, profile
+from collections import namedtuple
 
 def tuple_l2norm(p1, p2):
     return math.sqrt(sum([pow((float(p1_i) - float(p2_i)),2) for p1_i, p2_i in zip(p1, p2)]))
