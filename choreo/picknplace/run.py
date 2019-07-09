@@ -8,7 +8,6 @@ import numpy as np
 import argparse
 import time, sys
 import json
-from collections import namedtuple
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
@@ -21,7 +20,8 @@ set_cmaps_using_seq, parse_transform
 from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph, direct_ladder_graph_solve_picknplace
 from choreo.assembly_datastructure import Brick
 try:
-    from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+    # from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik, TOOL_FRAME
+    from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, TOOL_FRAME
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
@@ -33,7 +33,7 @@ PICKNPLACE_DIRECTORY = os.path.join('..', '..', 'assembly_instances', 'picknplac
 PICKNPLACE_FILENAMES = {
     'toggle_rebar_cage_1': 'toggle_rebar_cage_1.json'
 }
-IRB6600_TRACK_URDF = os.path.join('..','..','conrob_pybullet','models','abb_irb6600_track','urdf','irb6600_track_toggle.urdf')
+IRB6600_TRACK_URDF = os.path.join('..','..','conrob_pybullet','models','abb_irb6600_track','urdf','irb6600_track.urdf')
 TOOL_NAME = 'eef_tcp_frame' # robot_tool0 | eef_base_link | eef_tcp_frame
 GRASP_NAMES = ['pick_grasp_approach_plane', 'pick_grasp_plane', 'pick_grasp_retreat_plane']
 SELF_COLLISIONS = False
@@ -57,13 +57,13 @@ class WorldPose(object):
 
 class Grasp(object):
     def __init__(self, index, num, approach, attach, retreat):
-        self.index = index
-        self.num = num
+        self.index = index # brick index
+        self.num = num # grasp id
         self.approach = approach
         self.attach = attach
         self.retreat = retreat
     def __repr__(self):
-        return '{}({},{})'.format(self.__class__.__name__, self.index, self.num)
+        return '{}(b {}, g {})'.format(self.__class__.__name__, self.index, self.num)
 
 
 ##################################################
@@ -109,8 +109,15 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         multiply(place_parent_frame, pose_from_tform(parse_transform(json_element['assembly_process']['place']['object_target_pose'])))
 
         set_pose(pick_body, world_from_obj_place)
-        # draw_pose(world_from_obj_pick, length=0.04)
-        # draw_pose(world_from_obj_place, length=0.04)
+        draw_pose(world_from_obj_pick, length=0.04)
+        draw_pose(world_from_obj_place, length=0.04)
+
+        # print('---{0}'.format(index))
+        # print(multiply(world_from_obj_pick, obj_from_ee_grasp_poses[0]))
+        # draw_pose(multiply(world_from_obj_pick, obj_from_ee_grasp_poses[0]), length=0.04)
+        # print(multiply(world_from_obj_place, obj_from_ee_grasp_poses[0]))
+        # draw_pose(multiply(world_from_obj_place, obj_from_ee_grasp_poses[0]), length=0.04)
+
         # for ee_p in obj_from_ee_grasp_poses:
         #     draw_pose(multiply(world_from_obj_pick, ee_p), length=0.04)
         #     draw_pose(multiply(world_from_obj_place, ee_p), length=0.04)
@@ -124,7 +131,7 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
                                      ) \
                               for grasp_id, obj_from_ee_pose in enumerate(obj_from_ee_grasp_poses)]
 
-        # # draw approach poses
+        # draw approach poses
         # for ee_p in obj_from_ee_grasp_poses:
         #     draw_pose(multiply(world_from_obj_pick, ee_p, ee_from_approach_tf), length=0.04)
         #     draw_pose(multiply(world_from_obj_place, ee_p, ee_from_approach_tf), length=0.04)
@@ -192,6 +199,8 @@ def main(precompute=False):
     connect(use_gui=args.viewer)
     robot, brick_from_index, obstacle_from_name = load_pick_and_place(args.problem)
 
+    draw_pose(pose_from_tform(parse_transform(np.eye(4))))
+
     # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
 
@@ -208,7 +217,7 @@ def main(precompute=False):
     #     # pline_handle = draw_model(assembly_network, draw_tags=False)
     #     set_camera_pose(tuple(camera_pt), target_camera_pt)
     print('Continue?')
-    wait_for_interrupt()
+    # wait_for_user()()
     # use_seq_existing_plan = args.parse_seq
 
     ####################
@@ -224,9 +233,12 @@ def main(precompute=False):
 
     # default sequence
     seq_assignment = list(range(len(brick_from_index)))
-    element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
-    with LockRenderer():
-        tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name)
+    # element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
+    element_seq = {}
+    element_seq[0] = 0
+
+    # with LockRenderer():
+    tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, TOOL_FRAME)
     #     sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, obstacles)
     #     sg.find_sparse_path(max_time=2)
     #     tot_traj, graph_sizes = sg.extract_solution()
