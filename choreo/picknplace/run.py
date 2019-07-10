@@ -201,6 +201,8 @@ def main(precompute=False):
     # draw the base frame
     draw_pose(pose_from_tform(parse_transform(np.eye(4))))
 
+    draw_pose(pose_from_tform(parse_transform(np.eye(4))))
+
     # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
 
