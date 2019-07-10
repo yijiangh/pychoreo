@@ -16,6 +16,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
+EPS = 1e-5
 
 END_EFFECTOR_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/extrusion_end_effector.urdf'
 EE_TOOL_BASE_LINK = 'eef_base_link'
@@ -221,13 +222,18 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
     p2 = np.array(p2)
     e_len = np.linalg.norm(p1 - p2)
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
+    if abs(advance[-1] - advance[-2]) < EPS:
+        advance = np.delete(advance, -2)
     return map(tuple, [p1 + t*(p2-p1)/e_len for t in advance])
 
 def interpolate_cartesian_poses(pose_1, pose_2, disc_len):
     p1 = np.array(pose_1[0])
     p2 = np.array(pose_2[0])
     e_len = np.linalg.norm(p1 - p2)
+
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
+    if abs(advance[-1] - advance[-2]) < EPS:
+        advance = np.delete(advance, -2)
 
     e1 = euler_from_quat(pose_1[1])
     e2 = euler_from_quat(pose_2[1])

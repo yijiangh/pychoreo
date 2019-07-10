@@ -108,9 +108,9 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         world_from_obj_place = \
         multiply(place_parent_frame, pose_from_tform(parse_transform(json_element['assembly_process']['place']['object_target_pose'])))
 
-        set_pose(pick_body, world_from_obj_place)
-        draw_pose(world_from_obj_pick, length=0.04)
-        draw_pose(world_from_obj_place, length=0.04)
+        # set_pose(pick_body, world_from_obj_place)
+        # draw_pose(world_from_obj_pick, length=0.04)
+        # draw_pose(world_from_obj_place, length=0.04)
 
         # print('---{0}'.format(index))
         # print(multiply(world_from_obj_pick, obj_from_ee_grasp_poses[0]))
@@ -198,7 +198,7 @@ def main(precompute=False):
 
     connect(use_gui=args.viewer)
     robot, brick_from_index, obstacle_from_name = load_pick_and_place(args.problem)
-
+    # draw the base frame
     draw_pose(pose_from_tform(parse_transform(np.eye(4))))
 
     # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
@@ -223,9 +223,9 @@ def main(precompute=False):
     ####################
     # sequence planning completed
     # if has_gui():
-    #     # wait_for_interrupt('Press a key to visualize the plan...')
-    #     map(p.removeUserDebugItem, pline_handle)
-    #     # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
+        # wait_for_interrupt('Press a key to visualize the plan...')
+        # map(p.removeUserDebugItem, pline_handle)
+        # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
@@ -236,6 +236,11 @@ def main(precompute=False):
     # element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
     element_seq = {}
     element_seq[0] = 0
+
+    for e_id in element_seq.values():
+        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].goal_pose)
+        draw_pose(brick_from_index[e_id].initial_pose, length=0.02)
+        draw_pose(brick_from_index[e_id].goal_pose, length=0.02)
 
     # with LockRenderer():
     tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, TOOL_FRAME)
