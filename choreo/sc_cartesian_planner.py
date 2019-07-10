@@ -29,6 +29,19 @@ def divide_list_chunks(list, size_list):
         cur_id = sum(size_list[0:j])
         yield list[cur_id:cur_id+size_list[j]]
 
+# temp... really ugly...
+def divide_nested_list_chunks(list, size_lists):
+    # assert(sum(size_list) >= len(list))
+    cur_id = 0
+    output_list = []
+    for sl in size_lists:
+        sub_list = {}
+        for proc_name, jt_num in sl.items():
+            sub_list[proc_name] = list[cur_id:cur_id+jt_num]
+            cur_id += jt_num
+        output_list.append(sub_list)
+    return output_list
+
 #########################################
 
 class LadderGraphEdge(object):
@@ -206,8 +219,8 @@ def generate_ladder_graph_from_poses(robot, dof, pose_list, collision_fn=lambda 
 def concatenate_graph_vertically(graph_above, graph_below):
     assert isinstance(graph_above, LadderGraph)
     assert isinstance(graph_below, LadderGraph)
-    assert graph_above.size() == graph_below.size() # same number of rungs
-    num_rungs = graph_above.size()
+    assert graph_above.size == graph_below.size, 'must have same amount of rungs!'# same number of rungs
+    num_rungs = graph_above.size
     for i in range(num_rungs):
         rung_above = graph_above.get_rung(i)
         above_jts = graph_above.get_rung(i).data
@@ -217,9 +230,10 @@ def concatenate_graph_vertically(graph_above, graph_below):
             # shifting target vert id in below_edges
             next_above_rung_size = graph_below.get_rung_vert_size(i + 1)
             below_edges = graph_below.get_edges(i)
-            for e in below_edges:
-                e_copy = deepcopy(e)
-                e_copy.idx += next_above_rung_size
+            for v_out_edges in below_edges:
+                e_copy = deepcopy(v_out_edges)
+                for v_out_e in v_out_edges:
+                    v_out_e.idx += next_above_rung_size
                 rung_above.edges.append(e_copy)
     return graph_above
 
@@ -318,8 +332,8 @@ def append_ladder_graph(current_graph, next_graph):
     # connect graphs at the boundary
     a_rung = current_graph.get_rung(cur_size - 1)
     b_rung = current_graph.get_rung(cur_size)
-    n_st_vert = len(a_rung.data) / dof
-    n_end_vert = len(b_rung.data) / dof
+    n_st_vert = int(len(a_rung.data) / dof)
+    n_end_vert = int(len(b_rung.data) / dof)
 
     edge_builder = EdgeBuilder(n_st_vert, n_end_vert, dof)
     for k in range(n_st_vert):
@@ -634,17 +648,16 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
     vertical_graph = LadderGraph(dof)
     disabled_collisions = get_disabled_collisions(robot)
     movable_joints = get_track_arm_joints(robot)
-    print(movable_joints)
     track_joint = get_track_joint(robot)
-    print(track_joint)
     track_jt_id = movable_joints.index(*track_joint)
 
     # generate path pts
     grasps = brick.grasps
     for grasp in grasps:
-        print('----')
-        print(grasp)
+        # print('----')
+        # print(grasp)
         pose_handle = [] # visualization handle
+        sub_graph_sizes = {}
 
         def make_assembly_poses(obj_pose, grasp_poses):
             return [multiply(obj_pose, g_pose) for g_pose in grasp_poses]
@@ -653,9 +666,16 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
         world_from_place_poses = make_assembly_poses(brick.goal_pose, [grasp.approach, grasp.attach, grasp.retreat])
 
         approach2attach_pick = interpolate_cartesian_poses(world_from_pick_poses[0], world_from_pick_poses[1], disc_len)
+        sub_graph_sizes['pick_approach'] = len(approach2attach_pick)
+
         attach2retreat_pick = interpolate_cartesian_poses(world_from_pick_poses[1], world_from_pick_poses[2], disc_len)
+        sub_graph_sizes['pick_retreat'] = len(attach2retreat_pick)
+
         approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], disc_len)
+        sub_graph_sizes['place_approach'] = len(approach2attach_place)
+
         attach2retreat_place = interpolate_cartesian_poses(world_from_place_poses[1], world_from_place_poses[2], disc_len)
+        sub_graph_sizes['place_retreat'] = len(attach2retreat_place)
         # print('path len: {},{},{},{}'.format(len(approach2attach_pick), len(attach2retreat_pick),
         #                                      len(approach2attach_place), len(attach2retreat_place)))
 
@@ -670,8 +690,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
                 picknplace_poses.append(pose)
             accum_sub_id += len(sub_path)
 
-        for p_tmp in picknplace_poses:
-            pose_handle.append(draw_pose(p_tmp, length=0.04))
+        # for p_tmp in picknplace_poses:
+        #     pose_handle.append(draw_pose(p_tmp, length=0.04))
 
         collision_fns = []
         def dummy_collision_fn():
@@ -729,12 +749,12 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
                 graph.assign_rung(i, jt_list)
 
         if is_empty:
-            for l in [line for pose in pose_handle for line in pose]:
-                remove_debug(l)
+            # for l in [line for pose in pose_handle for line in pose]:
+            #     remove_debug(l)
             continue
         print('Found!!! at brick #{0} grasp id #{1}'.format(brick.index, grasp.num))
-        print(graph)
-        wait_for_user()
+        # print(graph)
+        # wait_for_user()
 
         # build edges
         for i in range(graph.get_rungs_size()-1):
@@ -759,45 +779,58 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
 
             graph.assign_edges(i, edges)
 
-        wait_for_user()
-        for l in [line for pose in pose_handle for line in pose]:
-            remove_debug(l)
-        # concatenate_graph_vertically(vertical_graph, graph)
+        # wait_for_user()
+        # for l in [line for pose in pose_handle for line in pose]:
+        #     remove_debug(l)
+
+        if vertical_graph.size == 0:
+            vertical_graph = graph
+        else:
+            concatenate_graph_vertically(vertical_graph, graph)
         # end loop grasps
-    return vertical_graph
+    return vertical_graph, sub_graph_sizes
 
 
-def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, tool_link):
+def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, tool_link, max_attempts=100):
     dof = len(get_movable_joints(robot))
     graph_list = []
     built_obstacles = list(obstacle_from_name.values())
 
+    graph_sizes = []
     for seq_id, e_id in element_seq.items():
         brick = brick_from_index[e_id]
+        solved = False
+        for _ in range(max_attempts):
+            graph, sub_graph_sizes = generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, WAYPOINT_DISC_LEN, tool_link, built_obstacles)
+            if graph.size > 0:
+                graph_list.append(graph)
+                graph_sizes.append(sub_graph_sizes)
+                solved = True
+                break
+            else:
+                print('graph empty at brick #{0} at seq #{1}'.format(e_id, seq_id))
 
-        graph = generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, WAYPOINT_DISC_LEN, tool_link, built_obstacles)
-        if graph is not None:
-            # print(graph)
-            graph_list.append(graph)
-        else:
-            assert('graph empty at brick #{0} at seq #{1}'.format(e_id, seq_id))
+        if not solved:
+            print('NOT SOLVED! seq #{}, brick#{} after {} attempts'.format(seq_id, e_id, max_attempts))
+            wait_for_user()
 
         set_pose(brick.body, brick.goal_pose)
         built_obstacles.append(brick.body)
 
-    print(graph_list)
+    # print('**************************')
+    # print(graph_list)
+    # print(graph_sizes)
 
     unified_graph = LadderGraph(dof)
-    # for g in graph_list:
-    #     unified_graph = append_ladder_graph(unified_graph, g)
+    for g in graph_list:
+        unified_graph = append_ladder_graph(unified_graph, g)
 
-    # dag_search = DAGSearch(unified_graph)
-    # dag_search.run()
-    # graph_sizes = [g.size for g in graph_list]
-    # tot_traj = dag_search.shortest_path()
+    dag_search = DAGSearch(unified_graph)
+    dag_search.run()
+    tot_traj = dag_search.shortest_path()
 
-    graph_sizes = []
-    tot_traj = []
+    # graph_sizes = []
+    # tot_traj = []
     return tot_traj, graph_sizes
 
 def generate_hybrid_motion_plans():

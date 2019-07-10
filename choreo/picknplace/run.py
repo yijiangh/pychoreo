@@ -9,19 +9,20 @@ import argparse
 import time, sys
 import json
 
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, LockRenderer, \
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_user, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, user_input,\
     HideOutput, load_pybullet, create_obj, draw_pose, add_body_name, get_pose, \
-    pose_from_tform, invert, multiply, set_pose
+    pose_from_tform, invert, multiply, set_pose, plan_joint_motion, get_joint_positions, \
+    add_fixed_constraint, remove_fixed_constraint, Attachment, create_attachment
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, \
 read_seq_json, cmap_id2angle, EEDirection, check_and_draw_ee_collision, \
 set_cmaps_using_seq, parse_transform
-from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph, direct_ladder_graph_solve_picknplace
+from choreo.sc_cartesian_planner import divide_nested_list_chunks, SparseLadderGraph, direct_ladder_graph_solve_picknplace
 from choreo.assembly_datastructure import Brick
 try:
     # from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik, TOOL_FRAME
-    from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, TOOL_FRAME
+    from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, TOOL_FRAME, get_track_arm_joints
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
@@ -148,44 +149,55 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
 
 ##################################################
 
-def display_trajectories(assembly_network, trajectories, time_step=0.075):
-    disconnect()
-    if trajectories is None:
-        return
-    connect(use_gui=True)
-    floor, robot = load_world()
-    camera_base_pt = assembly_network.get_end_points(0)[0]
-    camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
-    set_camera_pose(tuple(camera_pt), camera_base_pt)
-    # wait_for_interrupt()
+def display_trajectories(robot, brick_from_index, element_seq, trajectories, time_step=0.075):
+    # enable_gravity()
+    # movable_joints = get_movable_joints(robot)
+    movable_joints = get_track_arm_joints(robot)
+    end_effector_link = link_from_name(robot, TOOL_FRAME)
 
-    movable_joints = get_movable_joints(robot)
-    #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
-    #for body in element_bodies.values():
-    #    set_color(body, (1, 0, 0, 0))
-    # connected = set(ground_nodes)
-    for trajectory in trajectories:
-        #     if isinstance(trajectory, PrintTrajectory):
-        #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
-        #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
-        #         connected.add(trajectory.n2)
-        #     #wait_for_interrupt()
-        #     #set_color(element_bodies[element], (1, 0, 0, 1))
-        last_point = None
+    for seq_id, unit_picknplace in enumerate(trajectories):
         handles = []
-        for conf in trajectory: #.path:
-            set_joint_positions(robot, movable_joints, conf)
-            # if isinstance(trajectory, PrintTrajectory):
-            current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_FRAME)))
-            if last_point is not None:
-                color = (0, 0, 1) #if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
-                handles.append(add_line(last_point, current_point, color=color))
-            last_point = current_point
-            wait_for_duration(time_step)
-        # wait_for_interrupt()
+        brick = brick_from_index[element_seq[seq_id]]
 
-    wait_for_interrupt()
-    disconnect()
+        # place2pick transition
+        for conf in unit_picknplace['place2pick']:
+            set_joint_positions(robot, movable_joints, conf)
+            wait_for_duration(time_step)
+
+        # pick_approach
+        for conf in unit_picknplace['pick_approach']:
+            set_joint_positions(robot, movable_joints, conf)
+            wait_for_duration(time_step)
+
+        # pick attach
+        attach = create_attachment(robot, end_effector_link, brick.body)
+        # add_fixed_constraint(brick.body, robot, end_effector_link)
+
+        # pick_retreat
+        for conf in unit_picknplace['pick_retreat']:
+            set_joint_positions(robot, movable_joints, conf)
+            attach.assign()
+            wait_for_duration(time_step)
+
+        # pick2place transition
+        for conf in unit_picknplace['pick2place']:
+            set_joint_positions(robot, movable_joints, conf)
+            attach.assign()
+            wait_for_duration(time_step)
+
+        # place_approach
+        for conf in unit_picknplace['place_approach']:
+            set_joint_positions(robot, movable_joints, conf)
+            attach.assign()
+            wait_for_duration(time_step)
+
+        # place detach
+        # remove_fixed_constraint(brick.body, robot, end_effector_link)
+
+        # place_retreat
+        for conf in unit_picknplace['place_retreat']:
+            set_joint_positions(robot, movable_joints, conf)
+            wait_for_duration(time_step)
 
 ################################
 def main(precompute=False):
@@ -201,9 +213,8 @@ def main(precompute=False):
     # draw the base frame
     draw_pose(pose_from_tform(parse_transform(np.eye(4))))
 
-    draw_pose(pose_from_tform(parse_transform(np.eye(4))))
-
-    # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    movable_joints = get_track_arm_joints(robot)
+    initial_conf = get_joint_positions(robot, movable_joints)
     # dump_body(robot)
 
     # camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
@@ -235,9 +246,10 @@ def main(precompute=False):
 
     # default sequence
     seq_assignment = list(range(len(brick_from_index)))
-    # element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
-    element_seq = {}
-    element_seq[0] = 0
+    element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
+    # element_seq = {}
+    # element_seq[0] = 0
+    # element_seq[1] = 1
 
     for e_id in element_seq.values():
         set_pose(brick_from_index[e_id].body, brick_from_index[e_id].goal_pose)
@@ -249,14 +261,54 @@ def main(precompute=False):
     #     sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, obstacles)
     #     sg.find_sparse_path(max_time=2)
     #     tot_traj, graph_sizes = sg.extract_solution()
-    #
-    # trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
 
-    # if args.viewer:
-    # display_trajectories(assembly_network, trajectories, time_step=0.15)
+    print(graph_sizes)
+    picknplace_cart_plans = divide_nested_list_chunks(tot_traj, graph_sizes)
+
+    ## transition planning
+    moving_obstacles = {}
+    static_obstacles = list(obstacle_from_name.values())
+    # reset brick poses
+    for e_id in element_seq.values():
+        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].initial_pose)
+        moving_obstacles[e_id] = brick_from_index[e_id].body
+
+    end_effector_link = link_from_name(robot, TOOL_FRAME)
+    for seq_id, e_id in element_seq.items():
+        picknplace_unit = picknplace_cart_plans[seq_id]
+        brick = brick_from_index[e_id]
+
+        if seq_id != 0:
+            set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['place_retreat'][-1])
+        else:
+            set_joint_positions(robot, movable_joints, initial_conf)
+        place2pick_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['pick_approach'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+
+        set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['pick_retreat'][0])
+        attachs = [create_attachment(robot, end_effector_link, brick.body)]
+
+        tmp = moving_obstacles[e_id]
+        del moving_obstacles[e_id]
+        set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['pick_retreat'][-1])
+        pick2place_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['place_approach'][0], obstacles=static_obstacles + list(moving_obstacles.values()), attachments=attachs, self_collisions=SELF_COLLISIONS)
+
+        picknplace_cart_plans[seq_id]['place2pick'] = place2pick_path
+        picknplace_cart_plans[seq_id]['pick2place'] = pick2place_path
+
+        moving_obstacles[e_id] = tmp
+        set_pose(moving_obstacles[e_id], brick_from_index[e_id].goal_pose)
+
+    # reset objects to initial poses
+    for e_id in element_seq.values():
+        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].initial_pose)
+    print('planning completed. Simulate?')
+    wait_for_user()
+
+    display_trajectories(robot, brick_from_index, element_seq, picknplace_cart_plans, time_step=0.06)
     print('Quit?')
     if has_gui():
-        wait_for_interrupt()
+        wait_for_user()
+        disconnect()
 
 if __name__ == '__main__':
     main()
