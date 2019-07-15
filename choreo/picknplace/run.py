@@ -14,7 +14,8 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, user_input,\
     HideOutput, load_pybullet, create_obj, draw_pose, add_body_name, get_pose, \
     pose_from_tform, invert, multiply, set_pose, plan_joint_motion, get_joint_positions, \
-    add_fixed_constraint, remove_fixed_constraint, Attachment, create_attachment
+    add_fixed_constraint, remove_fixed_constraint, Attachment, create_attachment, \
+    pairwise_collision, set_color
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, \
 read_seq_json, cmap_id2angle, EEDirection, check_and_draw_ee_collision, \
 set_cmaps_using_seq, parse_transform
@@ -82,9 +83,6 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         #world = load_pybullet(os.path.join(bricks_directory, 'urdf', 'brick_demo.urdf'))
         robot = load_pybullet(os.path.join(root_directory, IRB6600_TRACK_URDF), fixed_base=True)
 
-    # static collision
-    obstacle_from_name = {}
-
     brick_from_index = {}
     for json_element in json_data['sequenced_elements']:
         index = json_element['order_id']
@@ -145,8 +143,38 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         # pick_contact_ngh_ids are movable element contact partial orders
         # pick_support_surface_file_names are fixed element contact partial orders
 
+    # static collision
+    obstacle_from_name = {}
+    print(json_data['static_obstacles'])
+    for so_list in json_data['static_obstacles'].values():
+        for so in so_list:
+            obstacle_from_name[so] = create_obj(os.path.join(obj_directory, so),
+                                   scale=scale, color=(0, 1, 0, 0.6))
+            # add_body_name(obstacle_from_name[so], so)
+
     return robot, brick_from_index, obstacle_from_name
 
+
+def sanity_check_collisions(brick_from_index, obstacle_from_name):
+    in_collision = False
+    for brick in brick_from_index.values():
+        for so_id, so in obstacle_from_name.items():
+            set_pose(brick.body, brick.initial_pose)
+            if pairwise_collision(brick.body, so):
+                set_color(brick.body, (1, 0, 0, 0.6))
+                set_color(so, (1, 0, 0, 0.6))
+
+                in_collision = True
+                print('collision detected between brick #{} and static #{} in its pick pose'.format(brick.index, so_id))
+                wait_for_user()
+
+            set_pose(brick.body, brick.goal_pose)
+            if pairwise_collision(brick.body, so):
+                in_collision = True
+                print('collision detected between brick #{} and static #{} in its place pose'.format(brick.index, so_id))
+                wait_for_user()
+
+    return in_collision
 ##################################################
 
 def display_trajectories(robot, brick_from_index, element_seq, trajectories, time_step=0.075):
@@ -214,23 +242,19 @@ def main(precompute=False):
     draw_pose(pose_from_tform(parse_transform(np.eye(4))))
 
     movable_joints = get_track_arm_joints(robot)
+    end_effector_link = link_from_name(robot, TOOL_FRAME)
     initial_conf = get_joint_positions(robot, movable_joints)
     # dump_body(robot)
 
     # camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
     # target_camera_pt = node_points[0]
 
-    # create collision bodies
-    # bodies = create_elements(node_points, [tuple(e.node_ids) for e in elements])
-    # for e, b in zip(elements, bodies):
-    #     e.element_body = b
-    #     # draw_pose(get_pose(b), length=0.004)
+    sanity_check_collisions(brick_from_index, obstacle_from_name)
 
     # if has_gui():
     #     # pline_handle = draw_model(assembly_network, draw_tags=False)
     #     set_camera_pose(tuple(camera_pt), target_camera_pt)
     print('Continue?')
-    # wait_for_user()()
     # use_seq_existing_plan = args.parse_seq
 
     ####################
@@ -245,11 +269,14 @@ def main(precompute=False):
     print('start sc motion planning.')
 
     # default sequence
+    from random import shuffle
     seq_assignment = list(range(len(brick_from_index)))
-    element_seq = {e_id : seq_id for e_id, seq_id in zip(seq_assignment, seq_assignment)}
+    # shuffle(seq_assignment)
+    element_seq = {seq_id : e_id for seq_id, e_id in enumerate(seq_assignment)}
     # element_seq = {}
     # element_seq[0] = 0
     # element_seq[1] = 1
+    # element_seq[2] = 2
 
     for e_id in element_seq.values():
         set_pose(brick_from_index[e_id].body, brick_from_index[e_id].goal_pose)
@@ -257,13 +284,15 @@ def main(precompute=False):
         draw_pose(brick_from_index[e_id].goal_pose, length=0.02)
 
     # with LockRenderer():
-    tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, TOOL_FRAME)
+    tot_traj, graph_sizes = direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, obstacle_from_name, end_effector_link)
     #     sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, obstacles)
     #     sg.find_sparse_path(max_time=2)
     #     tot_traj, graph_sizes = sg.extract_solution()
 
     print(graph_sizes)
     picknplace_cart_plans = divide_nested_list_chunks(tot_traj, graph_sizes)
+
+    wait_for_user()
 
     ## transition planning
     moving_obstacles = {}
@@ -273,7 +302,6 @@ def main(precompute=False):
         set_pose(brick_from_index[e_id].body, brick_from_index[e_id].initial_pose)
         moving_obstacles[e_id] = brick_from_index[e_id].body
 
-    end_effector_link = link_from_name(robot, TOOL_FRAME)
     for seq_id, e_id in element_seq.items():
         picknplace_unit = picknplace_cart_plans[seq_id]
         brick = brick_from_index[e_id]
@@ -304,7 +332,7 @@ def main(precompute=False):
     print('planning completed. Simulate?')
     wait_for_user()
 
-    display_trajectories(robot, brick_from_index, element_seq, picknplace_cart_plans, time_step=0.06)
+    display_trajectories(robot, brick_from_index, element_seq, picknplace_cart_plans, time_step=0.02)
     print('Quit?')
     if has_gui():
         wait_for_user()

@@ -12,7 +12,7 @@ from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, ge
 from assembly_datastructure import AssemblyNetwork, Brick
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
-    wait_for_user, remove_debug
+    wait_for_user, remove_debug, remove_body
 from choreo.extrusion_utils import get_disabled_collisions
 
 DEBUG=True
@@ -662,6 +662,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
         def make_assembly_poses(obj_pose, grasp_poses):
             return [multiply(obj_pose, g_pose) for g_pose in grasp_poses]
 
+        set_pose(brick.body, brick.initial_pose)
         world_from_pick_poses = make_assembly_poses(brick.initial_pose, [grasp.approach, grasp.attach, grasp.retreat])
         world_from_place_poses = make_assembly_poses(brick.goal_pose, [grasp.approach, grasp.attach, grasp.retreat])
 
@@ -694,27 +695,24 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
         #     pose_handle.append(draw_pose(p_tmp, length=0.04))
 
         collision_fns = []
-        def dummy_collision_fn():
-            return False
 
         attachment = Attachment(robot, tool_link, invert(grasp.attach), brick.body)
-        collision_fns = [dummy_collision_fn, dummy_collision_fn, dummy_collision_fn, dummy_collision_fn]
-        # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
-        #                                       attachments=[], self_collisions=SELF_COLLISIONS,
-        #                                       disabled_collisions=disabled_collisions,
-        #                                       custom_limits={}))
-        # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
-        #                                       attachments=[attachment], self_collisions=SELF_COLLISIONS,
-        #                                       disabled_collisions=disabled_collisions,
-        #                                       custom_limits={}))
-        # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
-        #                                       attachments=[attachment], self_collisions=SELF_COLLISIONS,
-        #                                       disabled_collisions=disabled_collisions,
-        #                                       custom_limits={}))
-        # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
-        #                                       attachments=[], self_collisions=SELF_COLLISIONS,
-        #                                       disabled_collisions=disabled_collisions,
-        #                                       custom_limits={}))
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
+                                              attachments=[], self_collisions=SELF_COLLISIONS,
+                                              disabled_collisions=disabled_collisions,
+                                              custom_limits={}))
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
+                                              attachments=[attachment], self_collisions=SELF_COLLISIONS,
+                                              disabled_collisions=disabled_collisions,
+                                              custom_limits={}))
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
+                                              attachments=[attachment], self_collisions=SELF_COLLISIONS,
+                                              disabled_collisions=disabled_collisions,
+                                              custom_limits={}))
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
+                                              attachments=[], self_collisions=SELF_COLLISIONS,
+                                              disabled_collisions=disabled_collisions,
+                                              custom_limits={}))
 
         graph = LadderGraph(dof)
         graph.resize(len(picknplace_poses))
@@ -727,8 +725,12 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
             # TODO: special sampler for 6+ extra dofs
             sub_id = 0 if process_map[i] < 2 else 1
             jt_list = sample_tool_ik(robot, pose, get_all=True, max_attempts=1000, prev_free_list=found_track_jt_val[sub_id])
-            # jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
-            jt_list = [jts for jts in jt_list]
+            if process_map[i] == 3:
+                # the object is in its goal pose in place-retreat phase
+                set_pose(brick.body, brick.goal_pose)
+
+            jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
+            # jt_list = [jts for jts in jt_list]
             # print(jt_list)
             if not jt_list or all(not jts for jts in jt_list):
                 # print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(brick.index, i, grasp.num))
@@ -744,6 +746,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
                 #     # print('-- ik sol found #{}'.format(jt_id))
                 #     print('track jt val: {}'.format(jt[track_jt_id]))
                 #     wait_for_user()
+                # wait_for_user()
 
                 # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
                 graph.assign_rung(i, jt_list)
