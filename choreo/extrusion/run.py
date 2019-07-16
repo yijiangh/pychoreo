@@ -8,9 +8,10 @@ import time, sys
 
 import pybullet as p
 
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, LockRenderer, \
+from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_user, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
-    wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line
+    wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, \
+    plan_joint_motion, get_joint_positions
 
 from choreo.extrusion_utils import create_elements, \
     load_extrusion, load_world
@@ -24,7 +25,7 @@ from choreo.assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_va
     traversal_to_ground_value_ordering, random_value_ordering
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
     check_and_draw_ee_collision, set_cmaps_using_seq
-from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
+from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph, SELF_COLLISIONS
 
 try:
     import meshcat
@@ -35,6 +36,7 @@ except ImportError as e:
     user_input("Press Enter to continue...")
 else:
     USE_MESHCAT = True
+USE_MESHCAT = False
 
 LOG_CSP = True
 LOG_CSP_PATH = None
@@ -132,23 +134,22 @@ def plan_sequence(robot, obstacles, assembly_network,
 
     return seq, seq_poses
 
-def display_trajectories(assembly_network, trajectories, time_step=0.075):
+def display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.075, transition_time_step=0.1):
     disconnect()
-    if trajectories is None:
-        return
+    assert(process_trajs)
+
     connect(use_gui=True)
     floor, robot = load_world()
     camera_base_pt = assembly_network.get_end_points(0)[0]
     camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
     set_camera_pose(tuple(camera_pt), camera_base_pt)
-    # wait_for_interrupt()
 
     movable_joints = get_movable_joints(robot)
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
     # connected = set(ground_nodes)
-    for trajectory in trajectories:
+    for seq_id, unit_proc in sorted(process_trajs.items()):
         #     if isinstance(trajectory, PrintTrajectory):
         #         print(trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
         #               is_ground(trajectory.element, ground_nodes), len(trajectory.path))
@@ -157,7 +158,15 @@ def display_trajectories(assembly_network, trajectories, time_step=0.075):
         #     #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
-        for conf in trajectory: #.path:
+
+        if unit_proc['transition']:
+            for conf in unit_proc['transition']:
+                set_joint_positions(robot, movable_joints, conf)
+                wait_for_duration(transition_time_step)
+        else:
+            print('seq #{} does not have transition traj found!'.format(seq_id))
+
+        for conf in unit_proc['print']:
             set_joint_positions(robot, movable_joints, conf)
             # if isinstance(trajectory, PrintTrajectory):
             current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_FRAME)))
@@ -165,10 +174,10 @@ def display_trajectories(assembly_network, trajectories, time_step=0.075):
                 color = (0, 0, 1) #if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                 handles.append(add_line(last_point, current_point, color=color))
             last_point = current_point
-            wait_for_duration(time_step)
-        # wait_for_interrupt()
+            wait_for_duration(extrusion_time_step)
 
-    wait_for_interrupt()
+    print('simulation done.')
+    wait_for_user()
     disconnect()
 
 ################################
@@ -197,10 +206,11 @@ def main(precompute=False):
 
     connect(use_gui=args.viewer)
     floor, robot = load_world()
-    # static obstacles
-    obstacles = [floor]
-    # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    # dump_body(robot)
+
+    # TODO: import other static obstacles
+    static_obstacles = [floor]
+    movable_joints = get_movable_joints(robot)
+    initial_conf = get_joint_positions(robot, movable_joints)
 
     camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
     target_camera_pt = node_points[0]
@@ -221,13 +231,13 @@ def main(precompute=False):
     if has_gui():
         pline_handle = draw_model(assembly_network, draw_tags=False)
         set_camera_pose(tuple(camera_pt), target_camera_pt)
-        wait_for_interrupt('Continue?')
+        wait_for_user()
 
     use_seq_existing_plan = args.parse_seq
     if not use_seq_existing_plan:
         with LockRenderer():
             search_method = SEARCH_METHODS[args.search_method]
-            element_seq, seq_poses = plan_sequence(robot, obstacles, assembly_network,
+            element_seq, seq_poses = plan_sequence(robot, static_obstacles, assembly_network,
                                                    stiffness_checker=sc,
                                                    search_method=search_method,
                                                    value_ordering_method=args.value_order_method,
@@ -259,20 +269,39 @@ def main(precompute=False):
     print('start sc motion planning.')
 
     with LockRenderer():
-        # tot_traj, graph_sizes = direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, obstacles)
-        sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, obstacles)
+        # tot_traj, graph_sizes = direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, static_obstacles)
+        sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, static_obstacles)
         sg.find_sparse_path(max_time=2)
         tot_traj, graph_sizes = sg.extract_solution()
 
-    trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
+    process_trajs = {}
+    for seq_id, print_jt_list in enumerate(list(divide_list_chunks(tot_traj, graph_sizes))):
+        process_trajs[seq_id] = {}
+        process_trajs[seq_id]['print'] = print_jt_list
 
+    # TODO: a separate function
     # transition planning
+    moving_obstacles = {}
+    for seq_id, e_id in sorted(element_seq.items()):
+        print('# {} - E#{}'.format(seq_id, e_id))
+        if seq_id != 0:
+            set_joint_positions(robot, movable_joints, process_trajs[seq_id-1]['print'][-1])
+        else:
+            set_joint_positions(robot, movable_joints, initial_conf)
+
+        print(moving_obstacles)
+        transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+
+        process_trajs[seq_id]['transition'] = transition_traj
+
+        e_body = assembly_network.get_element_body(e_id)
+        moving_obstacles[seq_id] = e_body
 
     # if args.viewer:
-    display_trajectories(assembly_network, trajectories, time_step=0.15)
+    display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.15, transition_time_step=0.05)
     print('Quit?')
     if has_gui():
-        wait_for_interrupt()
+        wait_for_user()
 
 if __name__ == '__main__':
     main()
