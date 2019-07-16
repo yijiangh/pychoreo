@@ -2,11 +2,11 @@ import numpy as np
 import time
 import random
 from copy import deepcopy
-from .choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, generate_way_point_poses, \
+from choreo.choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, generate_way_point_poses, \
     make_print_pose, sample_ee_yaw
 
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
-from assembly_datastructure import AssemblyNetwork
+from choreo.assembly_datastructure import AssemblyNetwork
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, get_movable_joints, multiply
 from choreo.extrusion_utils import get_disabled_collisions
 
@@ -81,7 +81,7 @@ class LadderGraph(object):
 
     def get_rung_vert_size(self, rung_id):
         """count the number of vertices in a rung"""
-        return len(self.get_rung(rung_id).data) / self.dof
+        return int(len(self.get_rung(rung_id).data) / self.dof)
 
     def get_vert_size(self):
         """count the number of vertices in the whole graph"""
@@ -291,8 +291,8 @@ def append_ladder_graph(current_graph, next_graph):
     # connect graphs at the boundary
     a_rung = current_graph.get_rung(cur_size - 1)
     b_rung = current_graph.get_rung(cur_size)
-    n_st_vert = len(a_rung.data) / dof
-    n_end_vert = len(b_rung.data) / dof
+    n_st_vert = int(len(a_rung.data) / dof)
+    n_end_vert = int(len(b_rung.data) / dof)
 
     edge_builder = EdgeBuilder(n_st_vert, n_end_vert, dof)
     for k in range(n_st_vert):
@@ -328,8 +328,8 @@ class CapVert(object):
         assert(self.dof == v.dof)
         cost = np.inf
         dof = self.dof
-        n_prev_end = len(v.end_jt_data) / dof
-        n_this_st = len(self.st_jt_data) / dof
+        n_prev_end = int(len(v.end_jt_data) / dof)
+        n_this_st = int(len(self.st_jt_data) / dof)
 
         for i in range(n_prev_end):
             prev_end_id = i * dof
@@ -428,7 +428,7 @@ class SparseLadderGraph(object):
         built_obstacles = static_obstacles
 
         seq = set()
-        for i in element_seq.keys():
+        for i in sorted(element_seq.keys()):
             e_id = element_seq[i]
             # TODO: temporal fix, this should be consistent with the seq search!!!
             if not assembly_network.is_element_grounded(e_id):

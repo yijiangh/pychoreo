@@ -1,6 +1,5 @@
 import math
 import numpy as np
-from profilehooks import timecall, profile
 
 def tuple_l2norm(p1, p2):
     return math.sqrt(sum([pow((float(p1_i) - float(p2_i)),2) for p1_i, p2_i in zip(p1, p2)]))
@@ -81,7 +80,7 @@ class AssemblyNetwork(object):
         return self.assembly_joints[node_id].neighbor_e_ids
 
     def get_layer_element_ids(self, layer_id):
-        assert(self.layer_element_ids.has_key(layer_id))
+        assert(layer_id in self.layer_element_ids.keys())
         return self.layer_element_ids[layer_id]
 
     def get_layers(self):
@@ -116,7 +115,7 @@ class AssemblyNetwork(object):
         element.is_grounded = True \
             if any(self.assembly_joints[node_id].is_grounded for node_id in element.node_ids) else False
 
-        if self.layer_element_ids.has_key(element.layer_id):
+        if element.layer_id in self.layer_element_ids.keys():
             self.layer_element_ids[element.layer_id].append(element.e_id)
         else:
             self.layer_element_ids[element.layer_id] = [element.e_id]
@@ -176,7 +175,6 @@ class AssemblyNetwork(object):
         grounded_dist = [dist[e.e_id] for e in self.assembly_elements.values() if e.is_grounded]
         return min(grounded_dist)
 
-    @timecall
     def compute_traversal_to_ground_dist(self, sub_graph=None):
         considered_e_ids = self.assembly_elements.keys() if not sub_graph else sub_graph
         for e in considered_e_ids:

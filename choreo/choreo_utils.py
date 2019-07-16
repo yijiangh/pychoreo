@@ -217,7 +217,7 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
     p2 = np.array(p2)
     e_len = np.linalg.norm(p1 - p2)
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
-    return map(tuple, [p1 + t*(p2-p1)/e_len for t in advance])
+    return [tuple(p1 + t*(p2-p1)/e_len) for t in advance]
 
 def generate_way_point_poses(p1, p2, phi, theta, ee_yaw, disc_len):
     way_points = interpolate_straight_line_pts(p1, p2, disc_len)
@@ -227,9 +227,9 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
     """
     :param print_along_e_id: element id that end effector is printing along
     :param exist_e_id: element that is assumed printed, checked against
-    :param print_along_cmap: print_along_element's collsion map, a list of bool, 
-        entry = 1 means collision-free (still available),  entry=0 means not feasible 
-    :return: 
+    :param print_along_cmap: print_along_element's collsion map, a list of bool,
+        entry = 1 means collision-free (still available),  entry=0 means not feasible
+    :return:
     """
     # TODO: check n1 -> n2 and self direction
     assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
@@ -303,7 +303,7 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
         handles.append(add_text(str(k), position=e_mid, text_size=text_size))
 
         if seq_poses is not None:
-            assert(seq_poses.has_key(k))
+            assert(k in seq_poses)
             for ee_dir in seq_poses[k]:
                 assert(isinstance(ee_dir, EEDirection))
                 cmap_pose = multiply(Pose(point=e_mid), make_print_pose(ee_dir.phi, ee_dir.theta))
@@ -323,11 +323,11 @@ def set_cmaps_using_seq(seq, csp):
     # print('static obstacles: {}'.format(built_obstacles))
 
     rec_seq = set()
-    for i in seq.keys():
+    print(seq)
+    for i in sorted(seq.keys()):
         check_e_id = seq[i]
         # print('------')
         # print('prune seq #{0} - e{1}'.format(i, check_e_id))
-        # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
         # print('obstables: {}'.format(built_obstacles))
         # TODO: temporal fix, this should be consistent with the seq search!!!
         if not csp.net.is_element_grounded(check_e_id):
@@ -339,6 +339,7 @@ def set_cmaps_using_seq(seq, csp):
         else:
             shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
                            if csp.net.assembly_joints[v_id].is_grounded]
+
         assert(shared_node)
 
         st_time = time.time()
@@ -453,7 +454,7 @@ def read_seq_json(file_name):
 
         seq_poses = {}
         element_seq = {}
-        assert(json_data.has_key('sequenced_elements'))
+        assert('sequenced_elements' in json_data)
         for e in json_data['sequenced_elements']:
             element_seq[e['order_id']] = e['element_id']
             seq_poses[e['order_id']] = \
@@ -478,7 +479,7 @@ def read_csp_log_json(file_name, specs='', log_path=None):
     assert(os.path.exists(file_dir) and os.path.exists(file_path))
     with open(file_path, 'r') as f:
         json_data = json.loads(f.read())
-        assert(json_data.has_key('assign_history'))
+        assert('assign_history' in json_data)
         assign_history = {}
         for k in json_data['assign_history'].keys():
             assign_history[int(k)] = json_data['assign_history'][k].values()

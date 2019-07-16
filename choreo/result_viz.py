@@ -13,7 +13,7 @@ from choreo.extrusion_utils import load_extrusion
 from .choreo_utils import read_seq_json, EEDirection, make_print_pose, read_csp_log_json
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, Pose, multiply, Point, tform_point
 from pyconmech import stiffness_checker
-from deformed_frame_viz import meshcat_visualize_deformed
+from choreo.deformed_frame_viz import meshcat_visualize_deformed
 
 try:
     user_input = raw_input
@@ -41,13 +41,23 @@ def meshcat_visualize_assembly_sequence(meshcat_vis, assembly_network, element_i
     ref_pt, _ = assembly_network.get_end_points(0)
     existing_e_ids = []
 
-    t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
+    if stiffness_checker:
+        t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
 
     for k in element_id_sequence.keys():
         e_id = element_id_sequence[k]
         existing_e_ids.append(e_id)
 
-        if not viz_deform:
+        if not viz_deform and stiffness_checker:
+            print(existing_e_ids)
+            assert(stiffness_checker.solve(existing_e_ids))
+            max_t, max_r = stiffness_checker.get_max_nodal_deformation()
+            print("max_t: {0} / {1}, max_r: {2} / {3}".format(max_t, t_tol, max_r, r_tol))
+
+            orig_shape = stiffness_checker.get_original_shape(disc=disc, draw_full_shape=False)
+            beam_disp = stiffness_checker.get_deformed_shape(exagg_ratio=exagg, disc=disc)
+            meshcat_visualize_deformed(meshcat_vis, beam_disp, orig_shape, disc, scale=scale)
+        else:
             p1, p2 = assembly_network.get_end_points(e_id)
             p1 = ref_pt + (p1 - ref_pt) * scale
             p2 = ref_pt + (p2 - ref_pt) * scale
@@ -65,7 +75,7 @@ def meshcat_visualize_assembly_sequence(meshcat_vis, assembly_network, element_i
             meshcat_vis[mc_key].set_object(g.LineSegments(g.PointsGeometry(vertices), g.MeshBasicMaterial(color=rgb_to_hex(color))))
 
             if seq_poses is not None and viz_pose:
-                assert(seq_poses.has_key(k))
+                assert(k in seq_poses)
                 dir_vertices = np.zeros([3, 2*len(seq_poses[k])])
                 for i, ee_dir in enumerate(seq_poses[k]):
                     assert(isinstance(ee_dir, EEDirection))
@@ -86,16 +96,6 @@ def meshcat_visualize_assembly_sequence(meshcat_vis, assembly_network, element_i
                 # meshcat_vis[mc_dir_key].set_object(g.Points(
                 #     g.PointsGeometry(dir_vertices),
                 #     g.PointsMaterial(size=0.01)))
-        else:
-            print(existing_e_ids)
-            assert(stiffness_checker.solve(existing_e_ids))
-            max_t, max_r = stiffness_checker.get_max_nodal_deformation()
-            print("max_t: {0} / {1}, max_r: {2} / {3}".format(max_t, t_tol, max_r, r_tol))
-
-            orig_shape = stiffness_checker.get_original_shape(disc=disc, draw_full_shape=False)
-            beam_disp = stiffness_checker.get_deformed_shape(exagg_ratio=exagg, disc=disc)
-            meshcat_visualize_deformed(meshcat_vis, beam_disp, orig_shape, disc, scale=scale)
-
         time.sleep(time_step)
 
 

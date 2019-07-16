@@ -18,16 +18,23 @@ from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
 from pyconmech import stiffness_checker
 
-from .assembly_datastructure import AssemblyNetwork
-from .csp import backtracking_search
-from .assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
+from choreo.assembly_datastructure import AssemblyNetwork
+from choreo.csp import backtracking_search
+from choreo.assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
     traversal_to_ground_value_ordering, random_value_ordering
-from .choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
+from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
     check_and_draw_ee_collision, set_cmaps_using_seq
-from .sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
+from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph
 
-import meshcat
-from .result_viz import meshcat_visualize_assembly_sequence
+try:
+    import meshcat
+    from choreo.result_viz import meshcat_visualize_assembly_sequence
+except ImportError as e:
+    print('\x1b[6;30;43m' + '{}, meshcat module not imported.'.format(e) + '\x1b[0m')
+    USE_MESHCAT = False
+    user_input("Press Enter to continue...")
+else:
+    USE_MESHCAT = True
 
 LOG_CSP = True
 LOG_CSP_PATH = None
@@ -92,8 +99,13 @@ def plan_sequence(robot, obstacles, assembly_network,
     pr.disable()
     pstats.Stats(pr).sort_stats('tottime').print_stats(10)
 
+    print('# of assigns: {0}'.format(csp.nassigns))
+    print('# of bt: {0}'.format(csp.nbacktrackings))
+    print('constr check time: {0}'.format(csp.constr_check_time))
+    print('final seq: {}'.format(seq))
+
     if search_method == 'backward':
-        order_keys = seq.keys()
+        order_keys = list(seq.keys())
         order_keys.reverse()
         rev_seq = {}
         for i in seq.keys():
@@ -103,17 +115,12 @@ def plan_sequence(robot, obstacles, assembly_network,
         csp = set_cmaps_using_seq(rev_seq, csp)
         print('pruning time: {0}'.format(time.time() - st_time))
 
-    print('# of assigns: {0}'.format(csp.nassigns))
-    print('# of bt: {0}'.format(csp.nbacktrackings))
-    print('constr check time: {0}'.format(csp.constr_check_time))
-    # print('final seq: {}'.format(seq))
-
     seq_poses = {}
-    for i in seq.keys():
+    for i in sorted(seq.keys()):
         e_id = seq[i]
         # feasible ee directions
         seq_poses[i] = []
-        assert(csp.cmaps.has_key(e_id))
+        assert(e_id in csp.cmaps)
         for cmap_id, free_flag in enumerate(csp.cmaps[e_id]):
             if free_flag:
                 phi, theta = cmap_id2angle(cmap_id)
@@ -208,7 +215,7 @@ def main(precompute=False):
     assembly_network.compute_traversal_to_ground_dist()
 
     sc = stiffness_checker(json_file_path=file_path, verbose=False)
-    sc.set_self_weight_load(True)
+    # sc.set_self_weight_load(True)
     print('test stiffness check on the whole structure: {0}'.format(sc.solve()))
 
     if has_gui():
@@ -226,7 +233,7 @@ def main(precompute=False):
                                                    value_ordering_method=args.value_order_method,
                                                    use_layer=args.use_layer,
                                                    file_name=args.problem)
-        write_eq_json(assembly_network, element_seq, seq_poses, args.problem)
+        write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
     else:
         element_seq, seq_poses = read_seq_json(args.problem)
 
@@ -238,14 +245,14 @@ def main(precompute=False):
         map(p.removeUserDebugItem, pline_handle)
         # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
 
-    # print('Visualizing assembly seq in meshcat...')
-    # vis = meshcat.Visualizer()
-    # try:
-    #     vis.open()
-    # except:
-    #     vis.url()
-    # meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses,
-    #                                     scale=3, time_step=0.5, direction_len=0.025)
+    if USE_MESHCAT:
+        print('Visualizing assembly seq in meshcat...')
+        vis = meshcat.Visualizer()
+        try:
+            vis.open()
+        except:
+            vis.url()
+        meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses, scale=3, time_step=0.5, direction_len=0.025)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
@@ -258,6 +265,8 @@ def main(precompute=False):
         tot_traj, graph_sizes = sg.extract_solution()
 
     trajectories = list(divide_list_chunks(tot_traj, graph_sizes))
+
+    # transition planning
 
     # if args.viewer:
     display_trajectories(assembly_network, trajectories, time_step=0.15)
