@@ -11,7 +11,8 @@ from collections import OrderedDict, namedtuple
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
-    tform_point, matrix_from_quat
+    tform_point, matrix_from_quat, MAX_DISTANCE, set_color, wait_for_user, set_camera_pose, \
+    add_body_name, get_name
 # from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
@@ -486,3 +487,82 @@ def read_csp_log_json(file_name, specs='', log_path=None):
         # print(assign_history)
         print('csp_log parse: {}'.format(file_path))
         return assign_history
+
+def pairwise_collision_diagnosis(body1, body2, max_distance=MAX_DISTANCE): # 10000
+    return p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
+                              physicsClientId=CLIENT)
+
+def pairwise_link_collision_diagnosis(body1, link1, body2, link2, max_distance=MAX_DISTANCE): # 10000
+    return p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
+                              linkIndexA=link1, linkIndexB=link2,
+                              physicsClientId=CLIENT)
+
+def get_collision_fn_diagnosis(body, joints, obstacles, attachments, self_collisions, disabled_collisions,
+                            custom_limits={}, **kwargs):
+    # TODO: convert most of these to keyword arguments
+    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
+    moving_bodies = [body] + [attachment.child for attachment in attachments]
+    if obstacles is None:
+        obstacles = list(set(get_bodies()) - set(moving_bodies))
+    check_body_pairs = list(product(moving_bodies, obstacles))  # + list(combinations(moving_bodies, 2))
+    lower_limits, upper_limits = get_custom_limits(body, joints, custom_limits)
+
+    # TODO: maybe prune the link adjacent to the robot
+    # TODO: test self collision with the holding
+    def diagnosis_collision_fn(q):
+        set_all_bodies_color()
+        for b in obstacles:
+            set_color(b, (0,0,1,0.3))
+
+        if not all_between(lower_limits, q, upper_limits):
+            print('Exceeding joint limit!')
+        set_joint_positions(body, joints, q)
+        for attachment in attachments:
+            attachment.assign()
+        for link1, link2 in check_link_pairs:
+            cr = pairwise_link_collision_diagnosis(body, link1, body, link2)
+            if cr:
+                for u_cr in cr:
+                    b1 = get_body_from_pb_id(u_cr[1])
+                    b2 = get_body_from_pb_id(u_cr[2])
+                    print('pairwise LINK collision: body {} - body {}'.format(get_name(b1), get_name(b2)))
+                    set_color(b1, (1, 0, 0, 1))
+                    set_color(b2, (0, 1, 0, 1))
+                    add_body_name(b1)
+                    add_body_name(b2)
+
+                    add_line(u_cr[5], u_cr[6])
+                    camera_base_pt = u_cr[5]
+                    camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
+                    set_camera_pose(tuple(camera_pt), camera_base_pt)
+
+                    wait_for_user()
+
+        for pair in check_body_pairs:
+            cr = pairwise_collision_diagnosis(*pair, **kwargs)
+            if cr:
+                for u_cr in cr:
+                    b1 = get_body_from_pb_id(u_cr[1])
+                    b2 = get_body_from_pb_id(u_cr[2])
+                    print('pairwise BODY collision: body {} - body {}'.format(get_name(b1), get_name(b2)))
+                    set_color(b1, (1, 0, 0, 1))
+                    set_color(b2, (0, 1, 0, 1))
+                    add_body_name(b1)
+                    add_body_name(b2)
+
+                    add_line(u_cr[5], u_cr[6])
+                    camera_base_pt = u_cr[5]
+                    camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
+                    set_camera_pose(tuple(camera_pt), camera_base_pt)
+
+                    wait_for_user()
+        print('no collision detected!')
+    return diagnosis_collision_fn
+
+def set_all_bodies_color(color=(1,1,1,0.3)):
+    bodies = get_bodies()
+    for b in bodies:
+        set_color(b, color)
+
+def get_body_from_pb_id(i):
+    return p.getBodyUniqueId(i, physicsClientId=CLIENT)

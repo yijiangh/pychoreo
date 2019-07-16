@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import random
-from copy import deepcopy
+from copy import deepcopy, copy
 from choreo.choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, generate_way_point_poses, \
     make_print_pose, sample_ee_yaw
 
@@ -425,7 +425,7 @@ class SparseLadderGraph(object):
         self.cap_rungs = []
         self.robot = robot
         disabled_collisions = get_disabled_collisions(robot)
-        built_obstacles = static_obstacles
+        built_obstacles = copy(static_obstacles)
 
         seq = set()
         for i in sorted(element_seq.keys()):

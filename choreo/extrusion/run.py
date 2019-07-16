@@ -5,16 +5,17 @@ import pstats
 import numpy as np
 import argparse
 import time, sys
+from webbrowser import open_new_tab
 
 import pybullet as p
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_user, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, \
-    plan_joint_motion, get_joint_positions
+    plan_joint_motion, get_joint_positions, remove_all_debug, get_name
 
 from choreo.extrusion_utils import create_elements, \
-    load_extrusion, load_world
+    load_extrusion, load_world, get_disabled_collisions
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
 from pyconmech import stiffness_checker
@@ -24,7 +25,7 @@ from choreo.csp import backtracking_search
 from choreo.assembly_csp import AssemblyCSP, next_variable_in_sequence, cmaps_value_ordering, cmaps_forward_check, \
     traversal_to_ground_value_ordering, random_value_ordering
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, read_seq_json, cmap_id2angle, EEDirection, \
-    check_and_draw_ee_collision, set_cmaps_using_seq
+    check_and_draw_ee_collision, set_cmaps_using_seq, get_collision_fn_diagnosis
 from choreo.sc_cartesian_planner import divide_list_chunks, SparseLadderGraph, SELF_COLLISIONS
 
 try:
@@ -159,7 +160,7 @@ def display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.
         last_point = None
         handles = []
 
-        if unit_proc['transition']:
+        if 'transition' in unit_proc and unit_proc['transition']:
             for conf in unit_proc['transition']:
                 set_joint_positions(robot, movable_joints, conf)
                 wait_for_duration(transition_time_step)
@@ -210,6 +211,7 @@ def main(precompute=False):
     # TODO: import other static obstacles
     static_obstacles = [floor]
     movable_joints = get_movable_joints(robot)
+    disabled_collisions = get_disabled_collisions(robot)
     initial_conf = get_joint_positions(robot, movable_joints)
 
     camera_pt = np.array(node_points[10]) + np.array([0.1,0,0.05])
@@ -252,7 +254,8 @@ def main(precompute=False):
     # sequence planning completed
     if has_gui():
         # wait_for_interrupt('Press a key to visualize the plan...')
-        map(p.removeUserDebugItem, pline_handle)
+        # map(p.removeUserDebugItem, pline_handle)
+        remove_all_debug()
         # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
 
     if USE_MESHCAT:
@@ -281,23 +284,45 @@ def main(precompute=False):
 
     # TODO: a separate function
     # transition planning
+    print('start transition planning.')
     moving_obstacles = {}
     for seq_id, e_id in sorted(element_seq.items()):
-        print('# {} - E#{}'.format(seq_id, e_id))
+        print('transition planning # {} - E#{}'.format(seq_id, e_id))
+        # print('moving obs: {}'.format([get_name(mo) for mo in moving_obstacles.values()]))
+        # print('static obs: {}'.format([get_name(so) for so in static_obstacles]))
+        print('---')
+
         if seq_id != 0:
             set_joint_positions(robot, movable_joints, process_trajs[seq_id-1]['print'][-1])
         else:
             set_joint_positions(robot, movable_joints, initial_conf)
 
-        print(moving_obstacles)
         transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+
+        if not transition_traj:
+            add_line(*assembly_network.get_end_points(e_id))
+
+            cfn = get_collision_fn_diagnosis(robot, movable_joints, obstacles=static_obstacles + list(moving_obstacles.values()), attachments=[], self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions)
+
+            st_conf = get_joint_positions(robot, movable_joints)
+            print('start extrusion pose:')
+            cfn(st_conf)
+
+            end_conf = process_trajs[seq_id]['print'][0]
+            print('end extrusion pose:')
+            cfn(end_conf)
+
+            print('EE collision with in-print element... See issue #2 for more info. Please do a replan for now (with the hope to find a better solution...)')
+            open_new_tab('https://github.com/yijiangh/pychoreo/issues/2')
 
         process_trajs[seq_id]['transition'] = transition_traj
 
         e_body = assembly_network.get_element_body(e_id)
         moving_obstacles[seq_id] = e_body
 
-    # if args.viewer:
+    print('transition planning done! proceed to simulation?')
+    wait_for_user()
+
     display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.15, transition_time_step=0.05)
     print('Quit?')
     if has_gui():
