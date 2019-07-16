@@ -39,6 +39,8 @@ else:
     USE_MESHCAT = True
 USE_MESHCAT = False
 
+SPARSE_LADDER_GRAPH_SOLVE_TIMEOUT = 2
+
 LOG_CSP = True
 LOG_CSP_PATH = None
 #"/Users/yijiangh/Dropbox (MIT)/Projects/Choreo/Software/shared_problem_instance/csp_log"
@@ -105,7 +107,7 @@ def plan_sequence(robot, obstacles, assembly_network,
     print('# of assigns: {0}'.format(csp.nassigns))
     print('# of bt: {0}'.format(csp.nbacktrackings))
     print('constr check time: {0}'.format(csp.constr_check_time))
-    print('final seq: {}'.format(seq))
+    # print('final seq: {}'.format(seq))
 
     if search_method == 'backward':
         order_keys = list(seq.keys())
@@ -270,11 +272,10 @@ def main(precompute=False):
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model
     print('start sc motion planning.')
-
     with LockRenderer():
         # tot_traj, graph_sizes = direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, static_obstacles)
         sg = SparseLadderGraph(robot, len(get_movable_joints(robot)), assembly_network, element_seq, seq_poses, static_obstacles)
-        sg.find_sparse_path(max_time=2)
+        sg.find_sparse_path(max_time=SPARSE_LADDER_GRAPH_SOLVE_TIMEOUT)
         tot_traj, graph_sizes = sg.extract_solution()
 
     process_trajs = {}
@@ -312,9 +313,6 @@ def main(precompute=False):
             print('end extrusion pose:')
             cfn(end_conf)
 
-            print('EE collision with in-print element... See issue #2 for more info. Please do a replan for now (with the hope to find a better solution...)')
-            open_new_tab('https://github.com/yijiangh/pychoreo/issues/2')
-
         process_trajs[seq_id]['transition'] = transition_traj
 
         e_body = assembly_network.get_element_body(e_id)
@@ -323,7 +321,7 @@ def main(precompute=False):
     print('transition planning done! proceed to simulation?')
     wait_for_user()
 
-    display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.15, transition_time_step=0.05)
+    display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.15, transition_time_step=0.1)
     print('Quit?')
     if has_gui():
         wait_for_user()

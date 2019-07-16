@@ -71,6 +71,32 @@ installing `meshcat` and `ZMQ`.
 
 `python -m choreo.extrusion.run -h` to see optional arguments.
 
+After computation, you should be able to see result like the following:
+
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=q1S-7KQo1XU" target="_blank"><img src="http://img.youtube.com/vi/q1S-7KQo1XU/0.jpg" alt="simple_frame_demo"/></a>
+
+To play with other examples, e.g. the topology optimized vault in [this paper](http://web.mit.edu/yijiangh/www//papers/HuangCarstensenMueller_IASS2018.pdf), try:
+* `python -m choreo.extrusion.run -p topopt-100`
+
+(in this example, the sequence planner will take about 150 sec to find a solution. Then, be patient with the transition planner...)
+
+**Note**: If the terminal says something like:
+```
+transition planning # <> - E#<>
+---
+Warning: initial configuration is in collision
+start extrusion pose:
+pairwise BODY collision: body kr6_r900_workspace1 - body body<>
+Press enter to continue
+```
+
+This problem is related to the end effector colliding with the element that it is currently printing. See [issue #2](https://github.com/yijiangh/pychoreo/issues/2). This is not hard to fix, once I get some time...
+
+For now, simply type "Enter" to skip the current transition process and the planner will continue to the next one. If you keep skipping them (hopefully there are not a lot of them), you will get to see the following "result" with "magic jumps" between some extrusions (around 0:50):
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=mzu-OMvFMcE" target="_blank"><img src="http://img.youtube.com/vi/mzu-OMvFMcE/0.jpg" alt="simple_frame_demo_EE_self_collision"/></a>
+
 ### Pick-and-place
 
 Coming soon...

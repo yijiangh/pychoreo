@@ -158,7 +158,8 @@ def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disa
         return any(pairwise_collision(*pair, **kwargs) for pair in check_body_pairs)
     return collision_fn
 
-def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[]):
+
+def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[], in_print_collision_obj=[]):
     ee_yaw = sample_ee_yaw()
     ee_tip_from_base = get_tip_from_ee_base(ee_body)
     print_orientation = make_print_pose(phi, theta, ee_yaw)
@@ -175,6 +176,16 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
     if angle > np.pi - SELF_COLLISION_ANGLE:
         return True
 
+    # TODO: make this more formal...
+    if in_print_collision_obj:
+        way_pt = way_points[-1]
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
+        world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
+        set_pose(ee_body, world_from_ee_base)
+        for ip_obj in in_print_collision_obj:
+            if pairwise_collision(ee_body, ip_obj) != 0:
+                return True
+
     for way_pt in way_points:
         world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
@@ -186,6 +197,7 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
             if pairwise_collision(ee_body, static_body) != 0:
                 return True
     return False
+
 
 def check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
     ee_yaw = sample_ee_yaw()
@@ -245,7 +257,7 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
     for i, c_val in enumerate(print_along_cmap):
         if c_val == 1:
             phi, theta = cmap_id2angle(i)
-            if check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body, static_bodies):
+            if check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body, static_bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
                 print_along_cmap[i] = 0
             else:
                 # exist feasible EE body pose, check ik
@@ -280,7 +292,7 @@ def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, prin
     for i in cmap_ids:
         if print_along_cmap[i] == 1:
             phi, theta = cmap_id2angle(i)
-            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies):
+            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
                 print_along_cmap[i] = 0
             # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
 
@@ -349,7 +361,7 @@ def set_cmaps_using_seq(seq, csp):
             csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
                                                                print_along_e_id=check_e_id, print_along_cmap=val_cmap,
                                                                printed_nodes=shared_node,
-                                                               bodies=built_obstacles)
+                                                               bodies=built_obstacles, )
             # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
             if sum(csp.cmaps[check_e_id]) > 0:
                 break
