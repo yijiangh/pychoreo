@@ -84,9 +84,8 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         robot = load_pybullet(os.path.join(root_directory, IRB6600_TRACK_URDF), fixed_base=True)
 
     brick_from_index = {}
-    for json_element in json_data['sequenced_elements']:
+    for e_id, json_element in json_data['sequenced_elements'].items():
         index = json_element['order_id']
-        # TODO: group objects together for one unit element
         # TODO: transform geometry based on json_element['parent_frame']
         pick_body = create_obj(os.path.join(obj_directory, json_element['element_geometry_file_names'][0]),
                                scale=scale, color=(0, 0, 1, 1))
