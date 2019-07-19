@@ -803,7 +803,7 @@ def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, o
     for seq_id, e_id in element_seq.items():
         brick = brick_from_index[e_id]
         solved = False
-        for _ in range(max_attempts):
+        for run_iter in range(max_attempts):
             graph, sub_graph_sizes = generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, WAYPOINT_DISC_LEN, tool_link, built_obstacles)
             if graph.size > 0:
                 graph_list.append(graph)
@@ -811,7 +811,7 @@ def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, o
                 solved = True
                 break
             else:
-                print('graph empty at brick #{0} at seq #{1}'.format(e_id, seq_id))
+                print('graph empty at brick #{0} at seq #{1}, rerun #{}'.format(e_id, seq_id, run_iter))
 
         if not solved:
             print('NOT SOLVED! seq #{}, brick#{} after {} attempts'.format(seq_id, e_id, max_attempts))

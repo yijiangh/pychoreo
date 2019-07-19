@@ -527,3 +527,8 @@ def parse_transform(json_tf, scale=DEFAULT_SCALE):
     tf = np.vstack([json_tf[i*4:i*4 + 4] for i in range(4)])
     tf[:3, 3] *= scale
     return tf
+
+
+def extract_file_name(str_key):
+    key_sep = str_key.split('.')
+    return key_sep[0]
