@@ -646,7 +646,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
 
     # assert(isinstance(brick, Brick))
     vertical_graph = LadderGraph(dof)
-    disabled_collisions = get_disabled_collisions(robot)
+    # disabled_collisions = get_disabled_collisions(robot)
     movable_joints = get_track_arm_joints(robot)
     track_joint = get_track_joint(robot)
     track_jt_id = movable_joints.index(*track_joint)
@@ -701,25 +701,20 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
         attachs = [Attachment(robot, tool_link, invert(grasp.attach), e_body) for e_body in brick.body]
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + brick.body,
                                               attachments=[], self_collisions=SELF_COLLISIONS,
-                                              disabled_collisions=disabled_collisions,
                                               custom_limits={}))
 
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
                                               attachments=attachs, self_collisions=SELF_COLLISIONS,
-                                              disabled_collisions=disabled_collisions,
                                               custom_limits={}))
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
                                               attachments=attachs, self_collisions=SELF_COLLISIONS,
-                                              disabled_collisions=disabled_collisions,
                                               custom_limits={}))
 
         # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + brick.body,
         #                                       attachments=attachs, self_collisions=SELF_COLLISIONS,
-        #                                       disabled_collisions=disabled_collisions,
         #                                       custom_limits={}))
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
                                               attachments=attachs, self_collisions=SELF_COLLISIONS,
-                                              disabled_collisions=disabled_collisions,
                                               custom_limits={}))
 
         graph = LadderGraph(dof)
