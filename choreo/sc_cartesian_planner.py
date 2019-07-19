@@ -662,7 +662,9 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
         def make_assembly_poses(obj_pose, grasp_poses):
             return [multiply(obj_pose, g_pose) for g_pose in grasp_poses]
 
-        set_pose(brick.body, brick.initial_pose)
+        for e_body in brick.body:
+            set_pose(e_body, brick.initial_pose)
+
         world_from_pick_poses = make_assembly_poses(brick.initial_pose, [grasp.approach, grasp.attach, grasp.retreat])
         world_from_place_poses = make_assembly_poses(brick.goal_pose, [grasp.approach, grasp.attach, grasp.retreat])
 
@@ -696,21 +698,27 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
 
         collision_fns = []
 
-        attachment = Attachment(robot, tool_link, invert(grasp.attach), brick.body)
-        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
+        attachs = [Attachment(robot, tool_link, invert(grasp.attach), e_body) for e_body in brick.body]
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + brick.body,
                                               attachments=[], self_collisions=SELF_COLLISIONS,
                                               disabled_collisions=disabled_collisions,
                                               custom_limits={}))
+
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
-                                              attachments=[attachment], self_collisions=SELF_COLLISIONS,
+                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
                                               disabled_collisions=disabled_collisions,
                                               custom_limits={}))
         collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
-                                              attachments=[attachment], self_collisions=SELF_COLLISIONS,
+                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
                                               disabled_collisions=disabled_collisions,
                                               custom_limits={}))
-        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + [brick.body],
-                                              attachments=[], self_collisions=SELF_COLLISIONS,
+
+        # collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles + brick.body,
+        #                                       attachments=attachs, self_collisions=SELF_COLLISIONS,
+        #                                       disabled_collisions=disabled_collisions,
+        #                                       custom_limits={}))
+        collision_fns.append(get_collision_fn(robot, get_movable_joints(robot), obstacles,
+                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
                                               disabled_collisions=disabled_collisions,
                                               custom_limits={}))
 
@@ -727,7 +735,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, dof, brick, disc_le
             jt_list = sample_tool_ik(robot, pose, get_all=True, max_attempts=1000, prev_free_list=found_track_jt_val[sub_id])
             if process_map[i] == 3:
                 # the object is in its goal pose in place-retreat phase
-                set_pose(brick.body, brick.goal_pose)
+                for e_body in brick.body:
+                    set_pose(e_body, brick.goal_pose)
 
             jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
             # jt_list = [jts for jts in jt_list]
@@ -811,14 +820,15 @@ def direct_ladder_graph_solve_picknplace(robot, brick_from_index, element_seq, o
                 solved = True
                 break
             else:
-                print('graph empty at brick #{0} at seq #{1}, rerun #{}'.format(e_id, seq_id, run_iter))
+                print('graph empty at brick #{} at seq #{}, rerun #{}'.format(e_id, seq_id, run_iter))
 
         if not solved:
             print('NOT SOLVED! seq #{}, brick#{} after {} attempts'.format(seq_id, e_id, max_attempts))
             wait_for_user()
 
-        set_pose(brick.body, brick.goal_pose)
-        built_obstacles.append(brick.body)
+        for e_body in brick.body:
+            set_pose(e_body, brick.goal_pose)
+        built_obstacles.extend(brick.body)
 
     # print('**************************')
     # print(graph_list)

@@ -19,7 +19,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect
     pairwise_collision, set_color
 from choreo.choreo_utils import draw_model, draw_assembly_sequence, write_seq_json, \
 read_seq_json, cmap_id2angle, EEDirection, check_and_draw_ee_collision, \
-set_cmaps_using_seq, parse_transform, extract_file_name
+set_cmaps_using_seq, parse_transform, extract_file_name, color_print, int2element_id
 from choreo.sc_cartesian_planner import divide_nested_list_chunks, SparseLadderGraph, direct_ladder_graph_solve_picknplace
 from choreo.assembly_datastructure import Brick
 try:
@@ -86,12 +86,11 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
 
     brick_from_index = {}
     for e_id, json_element in json_data['sequenced_elements'].items():
-        index = json_element['order_id']
+        index = json_element['object_id']
+        assert(e_id == index)
         # TODO: transform geometry based on json_element['parent_frame']
-        pick_body = create_obj(os.path.join(obj_directory, json_element['element_geometry_file_names']['0']['full_obj']),
-                               scale=scale, color=(0, 0, 1, 1))
-        add_body_name(pick_body, index)
 
+        ## parsing poses
         obj_from_ee_grasp_poses = [pose_from_tform(parse_transform(json_tf)) \
                                     for json_tf in json_element['grasps']['ee_poses']]
         # pick_grasp_plane is at the top of the object with z facing downwards
@@ -107,20 +106,6 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
         world_from_obj_place = \
         multiply(place_parent_frame, pose_from_tform(parse_transform(json_element['assembly_process']['place']['object_target_pose'])))
 
-        # set_pose(pick_body, world_from_obj_place)
-        # draw_pose(world_from_obj_pick, length=0.04)
-        # draw_pose(world_from_obj_place, length=0.04)
-
-        # print('---{0}'.format(index))
-        # print(multiply(world_from_obj_pick, obj_from_ee_grasp_poses[0]))
-        # draw_pose(multiply(world_from_obj_pick, obj_from_ee_grasp_poses[0]), length=0.04)
-        # print(multiply(world_from_obj_place, obj_from_ee_grasp_poses[0]))
-        # draw_pose(multiply(world_from_obj_place, obj_from_ee_grasp_poses[0]), length=0.04)
-
-        # for ee_p in obj_from_ee_grasp_poses:
-        #     draw_pose(multiply(world_from_obj_pick, ee_p), length=0.04)
-        #     draw_pose(multiply(world_from_obj_place, ee_p), length=0.04)
-
         # TODO: pick and place might have different approach tfs
         ee_from_approach_tf = pose_from_tform(parse_transform(json_element['assembly_process']['place']['grasp_from_approach_tf']))
         obj_from_ee_grasps = [Grasp(index, grasp_id, \
@@ -130,12 +115,21 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
                                      ) \
                               for grasp_id, obj_from_ee_pose in enumerate(obj_from_ee_grasp_poses)]
 
-        # draw approach poses
-        # for ee_p in obj_from_ee_grasp_poses:
-        #     draw_pose(multiply(world_from_obj_pick, ee_p, ee_from_approach_tf), length=0.04)
-        #     draw_pose(multiply(world_from_obj_place, ee_p, ee_from_approach_tf), length=0.04)
+        ## parsing geometries
+        pick_bodies = []
+        for sub_id, sub_dict in json_element['element_geometry_file_names'].items():
+            if 'convex_decomp' in sub_dict and sub_dict['convex_decomp']:
+                for part_obj_file in sub_dict['convex_decomp']:
+                    pick_sub_body = create_obj(os.path.join(obj_directory, part_obj_file), scale=scale, color=(random(), random(), 1, 1))
+                    pick_bodies.append(pick_sub_body)
+            else:
+                color_print('warning: E#{} does not have convex decomp bodies, use full body instead.'.format(index))
+                pick_full_body = create_obj(os.path.join(obj_directory, sub_dict['full_obj']),
+                                            scale=scale, color=(0, 0, 1, 1))
+                # add_body_name(pick_full_body, index)
+                pick_bodies.append(pick_full_body)
 
-        brick_from_index[index] = Brick(index=index, body=pick_body,
+        brick_from_index[index] = Brick(index=index, body=pick_bodies,
                                         initial_pose=world_from_obj_pick,
                                         goal_pose=world_from_obj_place,
                                         grasps=obj_from_ee_grasps,
@@ -154,7 +148,7 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
 
             for cvd_obj in so['convex_decomp']:
                 obj_name = extract_file_name(cvd_obj)
-                obstacle_from_name[obj_name] =  create_obj(os.path.join(obj_directory, cvd_obj), scale=scale, color=(random(), random(), random(), 0.6))
+                obstacle_from_name[obj_name] =  create_obj(os.path.join(obj_directory, cvd_obj), scale=scale, color=(1, random(), random(), 0.6))
                 # add_body_name(obstacle_from_name[obj_name], obj_name)
 
     return robot, brick_from_index, obstacle_from_name
@@ -163,21 +157,22 @@ def load_pick_and_place(instance_name, scale=MILLIMETER):
 def sanity_check_collisions(brick_from_index, obstacle_from_name):
     in_collision = False
     for brick in brick_from_index.values():
-        for so_id, so in obstacle_from_name.items():
-            set_pose(brick.body, brick.initial_pose)
-            if pairwise_collision(brick.body, so):
-                set_color(brick.body, (1, 0, 0, 0.6))
-                set_color(so, (1, 0, 0, 0.6))
+        for e_body in brick.body:
+            for so_id, so in obstacle_from_name.items():
+                set_pose(e_body, brick.initial_pose)
+                if pairwise_collision(e_body, so):
+                    set_color(e_body, (1, 0, 0, 0.6))
+                    set_color(so, (1, 0, 0, 0.6))
 
-                in_collision = True
-                print('collision detected between brick #{} and static #{} in its pick pose'.format(brick.index, so_id))
-                wait_for_user()
+                    in_collision = True
+                    print('collision detected between brick #{} and static #{} in its pick pose'.format(brick.index, so_id))
+                    wait_for_user()
 
-            set_pose(brick.body, brick.goal_pose)
-            if pairwise_collision(brick.body, so):
-                in_collision = True
-                print('collision detected between brick #{} and static #{} in its place pose'.format(brick.index, so_id))
-                wait_for_user()
+                set_pose(e_body, brick.goal_pose)
+                if pairwise_collision(e_body, so):
+                    in_collision = True
+                    print('collision detected between brick #{} and static #{} in its place pose'.format(brick.index, so_id))
+                    wait_for_user()
 
     return in_collision
 ##################################################
@@ -212,14 +207,16 @@ def display_trajectories(robot, brick_from_index, element_seq, trajectories, tim
         if step_sim: wait_for_user()
 
         # pick attach
-        attach = create_attachment(robot, end_effector_link, brick.body)
+        attachs = []
+        for e_body in brick.body:
+            attachs.append(create_attachment(robot, end_effector_link, e_body))
         # add_fixed_constraint(brick.body, robot, end_effector_link)
 
         print('seq #{} : pick retreat'.format(seq_id))
         # pick_retreat
         for conf in unit_picknplace['pick_retreat']:
             set_joint_positions(robot, movable_joints, conf)
-            attach.assign()
+            for at in attachs: at.assign()
             wait_for_duration(time_step)
 
         if step_sim: wait_for_user()
@@ -229,7 +226,7 @@ def display_trajectories(robot, brick_from_index, element_seq, trajectories, tim
         if unit_picknplace['pick2place']:
             for conf in unit_picknplace['pick2place']:
                 set_joint_positions(robot, movable_joints, conf)
-                attach.assign()
+                for at in attachs: at.assign()
                 wait_for_duration(time_step)
         else:
             print('seq #{} does not have pick to place transition plan found!'.format(seq_id))
@@ -240,7 +237,7 @@ def display_trajectories(robot, brick_from_index, element_seq, trajectories, tim
         # place_approach
         for conf in unit_picknplace['place_approach']:
             set_joint_positions(robot, movable_joints, conf)
-            attach.assign()
+            for at in attachs: at.assign()
             wait_for_duration(time_step)
 
         if step_sim: wait_for_user()
@@ -302,15 +299,18 @@ def main(precompute=False):
     # default sequence
     from random import shuffle
     seq_assignment = list(range(len(brick_from_index)))
-    # shuffle(seq_assignment)
-    # element_seq = {seq_id : e_id for seq_id, e_id in enumerate(seq_assignment)}
-    element_seq = {}
-    element_seq[0] = 0
-    element_seq[1] = 1
-    element_seq[2] = 2
+    shuffle(seq_assignment)
+    element_seq = {seq_id : e_id for seq_id, e_id in enumerate(seq_assignment)}
+    # element_seq = {}
+    # element_seq[0] = 0
+    # element_seq[1] = 1
+    # element_seq[2] = 2
+
+    for key, val in element_seq.items():
+        element_seq[key] = int2element_id(val)
 
     for e_id in element_seq.values():
-        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].goal_pose)
+        # for e_body in brick_from_index[e_id].body: set_pose(e_body, brick_from_index[e_id].goal_pose)
         draw_pose(brick_from_index[e_id].initial_pose, length=0.02)
         draw_pose(brick_from_index[e_id].goal_pose, length=0.02)
 
@@ -323,17 +323,21 @@ def main(precompute=False):
     # print(graph_sizes)
     picknplace_cart_plans = divide_nested_list_chunks(tot_traj, graph_sizes)
 
+    print('Cartesian planning finished.')
     wait_for_user()
 
+    print('Transition planning starts.')
     ## transition planning
     moving_obstacles = {}
     static_obstacles = list(obstacle_from_name.values())
     # reset brick poses
     for e_id in element_seq.values():
-        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].initial_pose)
-        moving_obstacles[e_id] = brick_from_index[e_id].body
+        for e_body in brick_from_index[e_id].body:
+            set_pose(e_body, brick_from_index[e_id].initial_pose)
+        moving_obstacles[e_id] = brick_from_index[e_id].body # list
 
     for seq_id, e_id in element_seq.items():
+        print('transition seq#{}'.format(seq_id))
         picknplace_unit = picknplace_cart_plans[seq_id]
         brick = brick_from_index[e_id]
 
@@ -341,23 +345,35 @@ def main(precompute=False):
             set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['place_retreat'][-1])
         else:
             set_joint_positions(robot, movable_joints, initial_conf)
-        place2pick_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['pick_approach'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+        current_moving_obstacles = []
+        for mo_id, mo in moving_obstacles.items():
+            current_moving_obstacles.extend(mo)
+
+        place2pick_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['pick_approach'][0], obstacles=static_obstacles + current_moving_obstacles, self_collisions=SELF_COLLISIONS)
+        if not place2pick_path:
+            print('seq #{} cannot find place2pick transition'.format(seq_id))
 
         set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['pick_retreat'][0])
-        attachs = [create_attachment(robot, end_effector_link, brick.body)]
+        attachs = [create_attachment(robot, end_effector_link, e_body) for e_body in brick.body]
 
         tmp = moving_obstacles[e_id]
         del moving_obstacles[e_id]
+        current_moving_obstacles = []
+        for mo_id, mo in moving_obstacles.items():
+            current_moving_obstacles.extend(mo)
         set_joint_positions(robot, movable_joints, picknplace_cart_plans[seq_id-1]['pick_retreat'][-1])
-        pick2place_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['place_approach'][0], obstacles=static_obstacles + list(moving_obstacles.values()), attachments=attachs, self_collisions=SELF_COLLISIONS)
+        pick2place_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['place_approach'][0], obstacles=static_obstacles + current_moving_obstacles, attachments=attachs, self_collisions=SELF_COLLISIONS)
+        if not pick2place_path:
+            print('seq #{} cannot find pick2place transition'.format(seq_id))
 
         picknplace_cart_plans[seq_id]['place2pick'] = place2pick_path
         picknplace_cart_plans[seq_id]['pick2place'] = pick2place_path
 
         moving_obstacles[e_id] = tmp
-        set_pose(moving_obstacles[e_id], brick_from_index[e_id].goal_pose)
+        for mo in moving_obstacles[e_id]:
+            set_pose(mo, brick_from_index[e_id].goal_pose)
 
-    print('planning completed. Simulate?')
+    print('\n*************************\nplanning completed. Simulate?')
     wait_for_user()
 
     if not has_gui():
@@ -367,7 +383,7 @@ def main(precompute=False):
 
     # reset brick poses
     for e_id in element_seq.values():
-        set_pose(brick_from_index[e_id].body, brick_from_index[e_id].initial_pose)
+        for e_body in brick_from_index[e_id].body: set_pose(e_body, brick_from_index[e_id].initial_pose)
 
     display_trajectories(robot, brick_from_index, element_seq, picknplace_cart_plans, time_step=0.02, step_sim=args.step_sim)
     print('Quit?')

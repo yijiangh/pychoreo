@@ -532,3 +532,9 @@ def parse_transform(json_tf, scale=DEFAULT_SCALE):
 def extract_file_name(str_key):
     key_sep = str_key.split('.')
     return key_sep[0]
+
+def color_print(msg):
+    print('\x1b[6;30;43m' + msg + '\x1b[0m')
+
+def int2element_id(id):
+    return 'e_' + str(id)
