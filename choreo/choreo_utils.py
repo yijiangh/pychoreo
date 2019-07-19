@@ -11,7 +11,8 @@ from collections import OrderedDict, namedtuple
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
-    tform_point, matrix_from_quat, euler_from_quat
+    tform_point, matrix_from_quat, MAX_DISTANCE, set_color, wait_for_user, set_camera_pose, \
+    add_body_name, get_name
 # from .assembly_csp import AssemblyCSP
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 
@@ -161,7 +162,8 @@ def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disa
         return any(pairwise_collision(*pair, **kwargs) for pair in check_body_pairs)
     return collision_fn
 
-def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[]):
+
+def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[], in_print_collision_obj=[]):
     ee_yaw = sample_ee_yaw()
     ee_tip_from_base = get_tip_from_ee_base(ee_body)
     print_orientation = make_print_pose(phi, theta, ee_yaw)
@@ -178,6 +180,16 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
     if angle > np.pi - SELF_COLLISION_ANGLE:
         return True
 
+    # TODO: make this more formal...
+    if in_print_collision_obj:
+        way_pt = way_points[-1]
+        world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
+        world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
+        set_pose(ee_body, world_from_ee_base)
+        for ip_obj in in_print_collision_obj:
+            if pairwise_collision(ee_body, ip_obj) != 0:
+                return True
+
     for way_pt in way_points:
         world_from_ee_tip = multiply(Pose(point=Point(*way_pt)), print_orientation)
         world_from_ee_base = multiply(world_from_ee_tip, ee_tip_from_base)
@@ -189,6 +201,7 @@ def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=Non
             if pairwise_collision(ee_body, static_body) != 0:
                 return True
     return False
+
 
 def check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
     ee_yaw = sample_ee_yaw()
@@ -267,7 +280,7 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
     for i, c_val in enumerate(print_along_cmap):
         if c_val == 1:
             phi, theta = cmap_id2angle(i)
-            if check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body, static_bodies):
+            if check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body, static_bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
                 print_along_cmap[i] = 0
             else:
                 # exist feasible EE body pose, check ik
@@ -302,7 +315,7 @@ def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, prin
     for i in cmap_ids:
         if print_along_cmap[i] == 1:
             phi, theta = cmap_id2angle(i)
-            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies):
+            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
                 print_along_cmap[i] = 0
             # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
 
@@ -326,7 +339,7 @@ def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None
         handles.append(add_text(str(k), position=e_mid, text_size=text_size))
 
         if seq_poses is not None:
-            assert(seq_poses.has_key(k))
+            assert(k in seq_poses)
             for ee_dir in seq_poses[k]:
                 assert(isinstance(ee_dir, EEDirection))
                 cmap_pose = multiply(Pose(point=e_mid), make_print_pose(ee_dir.phi, ee_dir.theta))
@@ -346,11 +359,11 @@ def set_cmaps_using_seq(seq, csp):
     # print('static obstacles: {}'.format(built_obstacles))
 
     rec_seq = set()
-    for i in seq.keys():
+    print(seq)
+    for i in sorted(seq.keys()):
         check_e_id = seq[i]
         # print('------')
         # print('prune seq #{0} - e{1}'.format(i, check_e_id))
-        # print('before pruning, cmaps sum: {}'.format(sum(val_cmap)))
         # print('obstables: {}'.format(built_obstacles))
         # TODO: temporal fix, this should be consistent with the seq search!!!
         if not csp.net.is_element_grounded(check_e_id):
@@ -362,6 +375,7 @@ def set_cmaps_using_seq(seq, csp):
         else:
             shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
                            if csp.net.assembly_joints[v_id].is_grounded]
+
         assert(shared_node)
 
         st_time = time.time()
@@ -370,7 +384,7 @@ def set_cmaps_using_seq(seq, csp):
             csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
                                                                print_along_e_id=check_e_id, print_along_cmap=val_cmap,
                                                                printed_nodes=shared_node,
-                                                               bodies=built_obstacles)
+                                                               bodies=built_obstacles, )
             # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
             if sum(csp.cmaps[check_e_id]) > 0:
                 break
@@ -476,7 +490,7 @@ def read_seq_json(file_name):
 
         seq_poses = {}
         element_seq = {}
-        assert(json_data.has_key('sequenced_elements'))
+        assert('sequenced_elements' in json_data)
         for e in json_data['sequenced_elements']:
             element_seq[e['order_id']] = e['element_id']
             seq_poses[e['order_id']] = \
@@ -508,7 +522,6 @@ def read_csp_log_json(file_name, specs='', log_path=None):
         # print(assign_history)
         print('csp_log parse: {}'.format(file_path))
         return assign_history
-
 
 def parse_point(json_point, scale=DEFAULT_SCALE):
     # TODO: should be changed to list

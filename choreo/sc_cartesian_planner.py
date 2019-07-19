@@ -369,8 +369,8 @@ class CapVert(object):
         assert(self.dof == v.dof)
         cost = np.inf
         dof = self.dof
-        n_prev_end = len(v.end_jt_data) / dof
-        n_this_st = len(self.st_jt_data) / dof
+        n_prev_end = int(len(v.end_jt_data) / dof)
+        n_this_st = int(len(self.st_jt_data) / dof)
 
         for i in range(n_prev_end):
             prev_end_id = i * dof
@@ -466,10 +466,10 @@ class SparseLadderGraph(object):
         self.cap_rungs = []
         self.robot = robot
         disabled_collisions = get_disabled_collisions(robot)
-        built_obstacles = static_obstacles
+        built_obstacles = copy(static_obstacles)
 
         seq = set()
-        for i in element_seq.keys():
+        for i in sorted(element_seq.keys()):
             e_id = element_seq[i]
             # TODO: temporal fix, this should be consistent with the seq search!!!
             if not assembly_network.is_element_grounded(e_id):

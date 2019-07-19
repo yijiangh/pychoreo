@@ -14,7 +14,7 @@ from .csp import CSP, UniversalDict
 from .csp_utils import count
 from .choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector, check_exist_valid_kinematics, \
     update_collision_map_batch
-from pyconmech import stiffness_checker
+# from pyconmech import stiffness_checker
 
 SELF_COLLISIONS = False
 
@@ -39,9 +39,9 @@ class AssemblyCSP(CSP):
 
         assert(search_method and vom)
         if self.search_method == 'forward':
-            layer_ids.sort()
+            sorted(layer_ids)
         if self.search_method == 'backward':
-            layer_ids.sort(reverse=True)
+            sorted(layer_ids, reverse=True)
         self.vom = vom
 
         if use_layer:
@@ -134,8 +134,8 @@ class AssemblyCSP(CSP):
                 return success
 
         def stiffness(self, var, val, assignment):
-            exist_e_ids = list(set(range(len(self.variables))).difference(assignment.values() + [val]))
-            if exist_e_ids:
+            exist_e_ids = list(set(range(len(self.variables))).difference(list(assignment.values()) + [val]))
+            if exist_e_ids and self.stiffness_checker:
                 success = self.stiffness_checker.solve(exist_e_ids)
             else:
                 success = True
@@ -279,11 +279,11 @@ class AssemblyCSP(CSP):
     def restore(self, removals):
         """Undo a supposition and all inferences from it."""
         # TODO
-        if removals.has_key('domain'):
+        if 'domain' in removals:
             for B, b in removals['domain']:
                 self.curr_domains[B].append(b)
 
-        if removals.has_key('cmaps'):
+        if 'cmaps' in removals:
             for e_id in removals['cmaps'].keys():
                 free_mask = removals['cmaps'][e_id]
                 assert(len(self.cmaps[e_id]) == len(free_mask))

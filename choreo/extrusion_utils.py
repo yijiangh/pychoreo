@@ -109,9 +109,9 @@ def create_elements(node_points, elements, radius=0.0005, color=(1, 0, 0, 1)):
     radius = 1e-6
     # TODO: seems to be a min radius
 
-    shrink = 0.01
-    #shrink = 0.005
-    #shrink = 0.002
+    # shrink = 0.01
+    shrink = 0.005
+    # shrink = 0.002
     #shrink = 0.
     element_bodies = []
     for (n1, n2) in elements:
