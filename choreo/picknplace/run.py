@@ -309,7 +309,7 @@ def main(precompute=False):
     # default sequence
     from random import shuffle
     seq_assignment = list(range(len(brick_from_index)))
-    shuffle(seq_assignment)
+    # shuffle(seq_assignment)
     element_seq = {seq_id : e_id for seq_id, e_id in enumerate(seq_assignment)}
     # element_seq = {}
     # element_seq[0] = 1
@@ -420,7 +420,7 @@ def main(precompute=False):
         for e_body in brick_from_index[e_id].body: set_pose(e_body, brick_from_index[e_id].initial_pose)
 
     display_trajectories(robot, brick_from_index, element_seq, picknplace_cart_plans, \
-                         cartesian_time_step=0.075, transition_time_step=0.1, step_sim=args.step_sim)
+                         cartesian_time_step=0.075, transition_time_step=0.07, step_sim=args.step_sim)
     print('Quit?')
     if has_gui():
         wait_for_user()

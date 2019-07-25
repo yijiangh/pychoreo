@@ -1,15 +1,15 @@
 import numpy as np
 import time
 import random
-from copy import deepcopy
+from copy import deepcopy, copy
 
 import pybullet as pyb
-from .choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, generate_way_point_poses, \
-    make_print_pose, sample_ee_yaw, interpolate_cartesian_poses
-# from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
-from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, get_track_arm_joints, get_track_joint
+from choreo.choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, \
+ generate_way_point_poses, make_print_pose, sample_ee_yaw, interpolate_cartesian_poses
+from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+# from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, get_track_arm_joints, get_track_joint
 
-from assembly_datastructure import AssemblyNetwork, Brick
+from choreo.assembly_datastructure import AssemblyNetwork, Brick
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
     wait_for_user, remove_debug, remove_body

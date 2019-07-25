@@ -186,14 +186,14 @@ def display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.
 ################################
 def main(precompute=False):
     parser = argparse.ArgumentParser()
-    # four-frame | simple_frame | djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
+    # four-frame | simple_frame | djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi | dented_cube
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-sm', '--search_method', default='b', help='csp search method, b for backward, f for forward.')
     parser.add_argument('-vom', '--value_order_method', default='sp',
                         help='value ordering method, sp for special heuristic, random for random value ordering')
     parser.add_argument('-l', '--use_layer', action='store_true', help='use layer info in the search.')
     # parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
-    # parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
+    parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
     parser.add_argument('-s', '--parse_seq', action='store_true', help='parse sequence planning result from a file and proceed to motion planning')
     parser.add_argument('-d', '--debug', action='store_true', help='Debug mode.')
@@ -285,41 +285,42 @@ def main(precompute=False):
 
     # TODO: a separate function
     # transition planning
-    print('start transition planning.')
-    moving_obstacles = {}
-    for seq_id, e_id in sorted(element_seq.items()):
-        print('transition planning # {} - E#{}'.format(seq_id, e_id))
-        # print('moving obs: {}'.format([get_name(mo) for mo in moving_obstacles.values()]))
-        # print('static obs: {}'.format([get_name(so) for so in static_obstacles]))
-        print('---')
+    if args.motions:
+        print('start transition planning.')
+        moving_obstacles = {}
+        for seq_id, e_id in sorted(element_seq.items()):
+            print('transition planning # {} - E#{}'.format(seq_id, e_id))
+            # print('moving obs: {}'.format([get_name(mo) for mo in moving_obstacles.values()]))
+            # print('static obs: {}'.format([get_name(so) for so in static_obstacles]))
+            print('---')
 
-        if seq_id != 0:
-            set_joint_positions(robot, movable_joints, process_trajs[seq_id-1]['print'][-1])
-        else:
-            set_joint_positions(robot, movable_joints, initial_conf)
+            if seq_id != 0:
+                set_joint_positions(robot, movable_joints, process_trajs[seq_id-1]['print'][-1])
+            else:
+                set_joint_positions(robot, movable_joints, initial_conf)
 
-        transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+            transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
 
-        if not transition_traj:
-            add_line(*assembly_network.get_end_points(e_id))
+            if not transition_traj:
+                add_line(*assembly_network.get_end_points(e_id))
 
-            cfn = get_collision_fn_diagnosis(robot, movable_joints, obstacles=static_obstacles + list(moving_obstacles.values()), attachments=[], self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions)
+                cfn = get_collision_fn_diagnosis(robot, movable_joints, obstacles=static_obstacles + list(moving_obstacles.values()), attachments=[], self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions)
 
-            st_conf = get_joint_positions(robot, movable_joints)
-            print('start extrusion pose:')
-            cfn(st_conf)
+                st_conf = get_joint_positions(robot, movable_joints)
+                print('start extrusion pose:')
+                cfn(st_conf)
 
-            end_conf = process_trajs[seq_id]['print'][0]
-            print('end extrusion pose:')
-            cfn(end_conf)
+                end_conf = process_trajs[seq_id]['print'][0]
+                print('end extrusion pose:')
+                cfn(end_conf)
 
-        process_trajs[seq_id]['transition'] = transition_traj
+            process_trajs[seq_id]['transition'] = transition_traj
 
-        e_body = assembly_network.get_element_body(e_id)
-        moving_obstacles[seq_id] = e_body
+            e_body = assembly_network.get_element_body(e_id)
+            moving_obstacles[seq_id] = e_body
 
-    print('transition planning done! proceed to simulation?')
-    wait_for_user()
+        print('transition planning done! proceed to simulation?')
+        wait_for_user()
 
     display_trajectories(assembly_network, process_trajs, extrusion_time_step=0.15, transition_time_step=0.1)
     print('Quit?')

@@ -237,7 +237,7 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
     advance = np.append(np.arange(0, e_len, disc_len), e_len)
     if abs(advance[-1] - advance[-2]) < EPS:
         advance = np.delete(advance, -2)
-    return map(tuple, [p1 + t*(p2-p1)/e_len for t in advance])
+    return [tuple(p1 + t*(p2-p1)/e_len) for t in advance]
 
 def interpolate_cartesian_poses(pose_1, pose_2, disc_len):
     p1 = np.array(pose_1[0])

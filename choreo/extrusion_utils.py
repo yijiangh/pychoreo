@@ -22,6 +22,7 @@ EXTRUSION_FILENAMES = {
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
     'simple_frame': 'simple_frame.json',
     'four-frame': 'four-frame.json',
+    'dented_cube': 'dented_cube.json'
 }
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
