@@ -1,0 +1,7 @@
+numpy
+pybullet
+-r requirements-optional.txt
+
+# dev dependencies
+pycddlib
+scipy

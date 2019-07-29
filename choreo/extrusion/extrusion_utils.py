@@ -11,7 +11,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, create_cy
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name
 from choreo.assembly_datastructure import AssemblyElement
 
-EXTRUSION_DIRECTORY = os.path.join("..", "assembly_instances", "extrusion")
+EXTRUSION_DIRECTORY = os.path.join('..', '..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
     'djmm_test_block': 'djmm_test_block_S1_03-14-2019_w_layer.json ',
     'mars_bubble': 'mars_bubble_S1_03-14-2019_w_layer.json',
@@ -103,13 +103,32 @@ def draw_element(node_points, element, color=(1, 0, 0)):
 
 
 def create_elements(node_points, elements, radius=0.0005, color=(1, 0, 0, 1)):
-    # TODO: just shrink the structure to prevent worrying about collisions at end-points
+    """ Create pybullet bodies for extrusion rods (cylinder)
+
+    Parameters
+    ----------
+    node_points : type
+        Description of parameter `node_points`.
+    elements : type
+        Description of parameter `elements`.
+    radius : type
+        Description of parameter `radius`.
+    color : type
+        Description of parameter `color`.
+
+    Returns
+    -------
+    create_elements(node_points, elements, radius=0.0005,
+        Description of returned object.
+
+    """
     #radius = 0.0001
     #radius = 0.00005
     #radius = 0.000001
     radius = 1e-6
     # TODO: seems to be a min radius
 
+    # TODO: just shrink the structure to prevent worrying about collisions at end-points
     # shrink = 0.01
     shrink = 0.005
     # shrink = 0.002
@@ -177,7 +196,7 @@ def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
 def load_world():
     root_directory = os.path.dirname(os.path.abspath(__file__))
     with HideOutput():
-        floor = load_model('models/short_floor.urdf')
+        floor = load_model('models/short_floor.urdf') # default floor
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
     set_point(floor, Point(z=-0.01))
     return floor, robot

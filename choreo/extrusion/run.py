@@ -14,7 +14,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, \
     plan_joint_motion, get_joint_positions, remove_all_debug, get_name
 
-from choreo.extrusion_utils import create_elements, \
+from choreo.extrusion.extrusion_utils import create_elements, \
     load_extrusion, load_world, get_disabled_collisions
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 

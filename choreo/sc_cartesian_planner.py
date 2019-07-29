@@ -13,7 +13,7 @@ from choreo.assembly_datastructure import AssemblyNetwork, Brick
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
     wait_for_user, remove_debug, remove_body
-from choreo.extrusion_utils import get_disabled_collisions
+from choreo.extrusion.extrusion_utils import get_disabled_collisions
 
 DEBUG=True
 DEFAULT_UNIT_PROCESS_TIMEOUT = 10
@@ -465,6 +465,7 @@ class SparseLadderGraph(object):
         self.dof = dof
         self.cap_rungs = []
         self.robot = robot
+        # TODO: this shouldn't be here
         disabled_collisions = get_disabled_collisions(robot)
         built_obstacles = copy(static_obstacles)
 

@@ -3,6 +3,9 @@ import numpy as np
 # from profilehooks import timecall, profile
 from collections import namedtuple
 
+# NOTE: this module should be replaced with the upcoming
+# compas_fab.assembly.datastructures
+
 def tuple_l2norm(p1, p2):
     return math.sqrt(sum([pow((float(p1_i) - float(p2_i)),2) for p1_i, p2_i in zip(p1, p2)]))
 
@@ -46,6 +49,10 @@ class AssemblyNetwork(object):
             self.insert_joint(node, is_grounded)
         for e in elements:
             self.insert_element(e)
+
+    @property
+    def elements(self):
+        return self.assembly_elements
 
     def get_size_of_joints(self):
         return len(self.assembly_joints)

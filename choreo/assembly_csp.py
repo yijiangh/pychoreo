@@ -6,13 +6,11 @@ import datetime
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import get_movable_joints, get_collision_fn
 
-from choreo.extrusion_utils import get_disabled_collisions
-from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
-
-from .assembly_datastructure import AssemblyNetwork
-from .csp import CSP, UniversalDict
-from .csp_utils import count
-from .choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector, check_exist_valid_kinematics, \
+from choreo.extrusion.extrusion_utils import get_disabled_collisions
+from choreo.assembly_datastructure import AssemblyNetwork
+from choreo.csp import CSP, UniversalDict
+from choreo.csp_utils import count
+from choreo.choreo_utils import update_collision_map, PHI_DISC, THETA_DISC, load_end_effector, check_exist_valid_kinematics, \
     update_collision_map_batch
 # from pyconmech import stiffness_checker
 

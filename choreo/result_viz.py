@@ -9,8 +9,8 @@ import meshcat.geometry as g
 import meshcat.transformations as tf
 
 from .assembly_datastructure import AssemblyNetwork
-from choreo.extrusion_utils import load_extrusion
-from .choreo_utils import read_seq_json, EEDirection, make_print_pose, read_csp_log_json
+from choreo.extrusion.extrusion_utils import load_extrusion
+from choreo.choreo_utils import read_seq_json, EEDirection, make_print_pose, read_csp_log_json
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, Pose, multiply, Point, tform_point
 from pyconmech import stiffness_checker
 from choreo.deformed_frame_viz import meshcat_visualize_deformed
