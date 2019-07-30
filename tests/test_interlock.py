@@ -1,3 +1,4 @@
+from __future__ import print_function
 import pytest
 import numpy as np
 import random
@@ -70,11 +71,11 @@ def compute_from_rot_block_dirs(bdirs, gt_fdirs, random_rot=False, verbose=True)
         tform = Pose(euler=Euler(roll=r1, pitch=r2, yaw=r3))
         r_bdirs = [tform_point(tform, bdir) for bdir in bdirs]
         r_gt_fdirs = [tform_point(tform, fdir) for fdir in gt_fdirs]
-        res_f_rays = computeFeasibleRegionFromBlockDir(r_bdirs, verbose)
-        return res_f_rays, r_gt_fdirs
+        f_rays, lin_set = computeFeasibleRegionFromBlockDir(r_bdirs, verbose)
+        return f_rays, lin_set, r_gt_fdirs
     else:
-        res_f_rays = computeFeasibleRegionFromBlockDir(bdirs, verbose)
-        return res_f_rays, gt_fdirs
+        f_rays, lin_set = computeFeasibleRegionFromBlockDir(bdirs, verbose)
+        return f_rays, lin_set, gt_fdirs
 
 
 def check_matched_direction_lists_equal(v_list1, v_list2, tol_digit=6, exact_eq=False, unitize=True):
@@ -83,6 +84,7 @@ def check_matched_direction_lists_equal(v_list1, v_list2, tol_digit=6, exact_eq=
     for id1, id2 in zip(l1_ids, l2_ids):
         assert_approx_equal_vectors(v_list1[id1], v_list2[id2],
                                     unitize=unitize, tol_digit=6, exact_eq=False)
+
 
 
 def list_matched_direction_lists_equal(v_list1, v_list2, tol_digit=6, exact_eq=False, unitize=True):
@@ -97,6 +99,20 @@ def list_matched_direction_lists_equal(v_list1, v_list2, tol_digit=6, exact_eq=F
 
 ######################################################
 
+
+@pytest.mark.parametrize("random_rot, tol_digit", [(False, 30), (True, 10)])
+def test_CompleteBlock_feasible_region_from_block_dirs(random_rot, tol_digit):
+    print('\ncomplete block test...')
+    block_dirs = [[1, 0, 0], [-1, 0, 0],\
+                  [0, 1, 0], [0, -1, 0],\
+                  [0, 0, 1], [0, 0, -1]]
+    gt_feasible_dirs = [] # ground truth
+    f_rays, lin_set, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    assert not lin_set
+    assert not f_rays
+    print('complete block passed.\n=========')
+
+
 @pytest.mark.parametrize("random_rot, tol_digit", [(False, 30), (True, 10)])
 def test_MortiseTenon_feasible_region_from_block_dirs(random_rot, tol_digit):
     print('\nmortise-tenon test...')
@@ -104,7 +120,8 @@ def test_MortiseTenon_feasible_region_from_block_dirs(random_rot, tol_digit):
                 [0, 1, 0], [0, -1, 0],\
                 [0, 0, 1]]
     gt_feasible_dirs = [(0,0,-1)] # ground truth
-    f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    f_rays, lin_set, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    assert not lin_set
     check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=tol_digit)
     print('mortise-tenon passed.\n=========')
 
@@ -116,7 +133,8 @@ def test_TriangleWedge_feasible_region_from_block_dirs(random_rot, tol_digit):
     block_dirs = [[1, 0, -1], [-1, 0, -1], \
                   [0, 1, 0], [0, -1, 0]]
     gt_feasible_dirs = [(1,0,1), (-1,0,1)] # ground truth
-    f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    f_rays, lin_set, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    assert not lin_set
     check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=tol_digit)
     print('triangle wedge passed.\n=========')
 
@@ -126,12 +144,9 @@ def test_HalfHalved_feasible_region_from_block_dirs(random_rot, tol_digit):
     print('\nhalf-halved test...')
     block_dirs = [[0, 1, 0], [0, -1, 0], [0, 0, 1]]
     gt_feasible_dirs = [(0,0,-1), (-1,0,0), (1,0,0)] # ground truth
-    # block_dirs = [[0, -1, 1], [0, 1, -1], [0, 1, 1]]
-    # gt_feasible_dirs = [(1,0,0), (-1,0,0), (0,-1,-1)] # ground truth
 
-    f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
-    # print('rays: {}'.format(f_rays))
-    # print('ground truth: {}'.format(gt_feasible_dirs))
+    f_rays, lin_set, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    f_rays.extend([(-f_rays[id][0], -f_rays[id][1], -f_rays[id][2]) for id in lin_set])
 
     if not random_rot:
         check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=tol_digit)
@@ -156,7 +171,8 @@ def test_Sandwich_feasible_region_from_block_dirs(random_rot, tol_digit):
     block_dirs = [[0, 0, 1], [0, 0, -1]]
     gt_feasible_dirs = [(1,0,0), (-1,0,0), (0,1,0), (0,-1,0)] # ground truth
 
-    f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    f_rays, lin_set, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=random_rot)
+    f_rays.extend([(-f_rays[id][0], -f_rays[id][1], -f_rays[id][2]) for id in lin_set])
 
     if not random_rot:
         check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=tol_digit)
@@ -190,63 +206,63 @@ def rgb_to_hex(rgb):
     blue = hex(int(255*rgb[2])).lstrip('0x')
     return '0x{0:0>2}{1:0>2}{2:0>2}'.format(red, green, blue)
 
-import argparse
-from time import sleep
-import meshcat
-import meshcat.geometry as g
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-r', '--random', action='store_true')
-    parser.add_argument('-tol', '--tol_digit', default=6)
-    args = parser.parse_args()
-
-    print('\nhalf-halved test...')
-    # block_dirs = [[0, 1, 0], [0, -1, 0], [0, 0, 1]]
-    # gt_feasible_dirs = [(0,0,-1), (-1,0,0), (1,0,0)] # ground truth
-
-    block_dirs = [[0, -1, 1], [0, 1, -1], [0, 1, 1]]
-    gt_feasible_dirs = [(1,0,0), (-1,0,0), (0,-1,-1)] # ground truth
-
-    f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=args.random)
-    print('rays: {}'.format(f_rays))
-    print('ground truth: {}'.format(gt_feasible_dirs))
-    # check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=args.tol_digit)
-    print('half-halved passed.\n=========')
-
-    vis = meshcat.Visualizer()
-    try:
-        vis.open()
-    except:
-        vis.url()
-
-    red = np.array([1.0, 0, 0])
-    blue = np.array([0, 0, 1.0])
-    white = np.array([1.0, 1.0, 1.0])
-    pink = np.array([255.0, 20.0, 147.0]) / 255
-    black = [0, 0, 0]
-
-    l1_ids, l2_ids = vec_list_matching(f_rays, gt_feasible_dirs)
-    origin = np.zeros((1,3))
-    for i in range(len(f_rays)):
-        ray = f_rays[l1_ids[i]]
-        gt_v = gt_feasible_dirs[l2_ids[i]]
-
-        print('ray : {}'.format(ray))
-        vis['ray' + str(i)].set_object(
-            g.Line(g.PointsGeometry(np.vstack((origin, ray)).T),
-                   g.MeshBasicMaterial(rgb_to_hex(pink))))
-        # sleep(1)
-        input()
-
-        print('gt_v : {}'.format(gt_v))
-        vis['gt_v' + str(i)].set_object(
-            g.Line(g.PointsGeometry(np.vstack((origin, gt_v)).T),
-                   g.MeshBasicMaterial(rgb_to_hex(white))))
-        # sleep(1)
-        input()
-
-    # vis.close()
-
-if __name__ == '__main__':
-    main()
+# import argparse
+# from time import sleep
+# import meshcat
+# import meshcat.geometry as g
+#
+# def main():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('-r', '--random', action='store_true')
+#     parser.add_argument('-tol', '--tol_digit', default=6)
+#     args = parser.parse_args()
+#
+#     print('\nhalf-halved test...')
+#     # block_dirs = [[0, 1, 0], [0, -1, 0], [0, 0, 1]]
+#     # gt_feasible_dirs = [(0,0,-1), (-1,0,0), (1,0,0)] # ground truth
+#
+#     block_dirs = [[0, -1, 1], [0, 1, -1], [0, 1, 1]]
+#     gt_feasible_dirs = [(1,0,0), (-1,0,0), (0,-1,-1)] # ground truth
+#
+#     f_rays, gt_feasible_dirs = compute_from_rot_block_dirs(block_dirs, gt_feasible_dirs, random_rot=args.random)
+#     print('rays: {}'.format(f_rays))
+#     print('ground truth: {}'.format(gt_feasible_dirs))
+#     # check_matched_direction_lists_equal(f_rays, gt_feasible_dirs, tol_digit=args.tol_digit)
+#     print('half-halved passed.\n=========')
+#
+#     vis = meshcat.Visualizer()
+#     try:
+#         vis.open()
+#     except:
+#         vis.url()
+#
+#     red = np.array([1.0, 0, 0])
+#     blue = np.array([0, 0, 1.0])
+#     white = np.array([1.0, 1.0, 1.0])
+#     pink = np.array([255.0, 20.0, 147.0]) / 255
+#     black = [0, 0, 0]
+#
+#     l1_ids, l2_ids = vec_list_matching(f_rays, gt_feasible_dirs)
+#     origin = np.zeros((1,3))
+#     for i in range(len(f_rays)):
+#         ray = f_rays[l1_ids[i]]
+#         gt_v = gt_feasible_dirs[l2_ids[i]]
+#
+#         print('ray : {}'.format(ray))
+#         vis['ray' + str(i)].set_object(
+#             g.Line(g.PointsGeometry(np.vstack((origin, ray)).T),
+#                    g.MeshBasicMaterial(rgb_to_hex(pink))))
+#         # sleep(1)
+#         input()
+#
+#         print('gt_v : {}'.format(gt_v))
+#         vis['gt_v' + str(i)].set_object(
+#             g.Line(g.PointsGeometry(np.vstack((origin, gt_v)).T),
+#                    g.MeshBasicMaterial(rgb_to_hex(white))))
+#         # sleep(1)
+#         input()
+#
+#     # vis.close()
+#
+# if __name__ == '__main__':
+#     main()

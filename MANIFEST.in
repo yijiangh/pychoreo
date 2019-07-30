@@ -1,0 +1,22 @@
+graft choreo
+
+prune .github
+
+prune assembly_instances
+prune docs
+prune tests
+prune choreo/results
+prune choreo/csp_log
+
+include LICENSE
+include README.md
+# include AUTHORS.md
+include CHANGELOG.md
+include requirements.txt
+
+exclude requirements-dev.txt
+exclude pytest.ini .bumpversion.cfg .editorconfig
+exclude tasks.py
+exclude CODE_OF_CONDUCT.md CONTRIBUTING.md
+
+global-exclude *.py[cod] __pycache__ *.dylib *.nb[ic] .DS_Store

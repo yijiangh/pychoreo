@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.linalg import norm
 import cdd
 
 def computeFeasibleRegionFromBlockDir(block_dirs, verbose=False):
@@ -24,6 +25,9 @@ def computeFeasibleRegionFromBlockDir(block_dirs, verbose=False):
     -------
     f_rays: list of 3-tuples
         extreme rays of the feasible assembly region
+
+    lin_set: list of int
+        indices of rays that is linear (both directions)
     """
     mat_hrep = [] # "half-space" representation
     for vec in block_dirs:
@@ -39,14 +43,21 @@ def computeFeasibleRegionFromBlockDir(block_dirs, verbose=False):
     nt = cdd.NumberTypeable('float')
     f_verts = []
     f_rays = []
+    # linear_rays = []
     for i in range(ext.row_size):
         if ext[i][0] == 1:
             f_verts.append(tuple([nt.make_number(num) for num in ext[i][1:4]]))
         elif ext[i][0] == 0:
-            f_rays.append(tuple([nt.make_number(num) for num in ext[i][1:4]]))
-            if i in lin_set:
-                f_rays.append(tuple([- nt.make_number(num) for num in ext[i][1:4]]))
-    assert(not f_verts)
+            # TODO: numerical instability?
+            ray_vec = [nt.make_number(num) for num in ext[i][1:4]]
+            ray_vec /= norm(ray_vec)
+            f_rays.append(tuple(ray_vec))
+            # if i in lin_set:
+            #     lin_vec_set.append(tuple([- nt.make_number(num) for num in ext[i][1:4]]))
+
+    # if f_verts:
+    #     assert len(f_verts) == 1
+        # np.testing.assert_almost_equal f_verts[0] == [0,0,0]
 
     # TODO: QR decomposition to make orthogonal
     if verbose:
@@ -56,4 +67,4 @@ def computeFeasibleRegionFromBlockDir(block_dirs, verbose=False):
         print('verts:\n {}'.format(f_verts))
         print('rays:\n {}'.format(f_rays))
 
-    return f_rays
+    return f_rays, lin_set

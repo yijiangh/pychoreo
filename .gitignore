@@ -15,3 +15,8 @@ gurobi.log
 
 choreo/csp_log/*
 choreo/results/*
+
+dist
+.eggs
+*__pycache__*
+*.egg-info
