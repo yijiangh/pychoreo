@@ -3,9 +3,9 @@ import pytest
 import numpy as np
 import random
 from numpy.testing import assert_equal, assert_almost_equal
-from choreo.interlock.utils import computeFeasibleRegionFromBlockDir
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Euler, Pose, \
-    multiply, tform_point
+
+from choreo.interlock import compute_feasible_region_from_block_dir
+from conrob_pybullet import Euler, Pose, multiply, tform_point
 from scipy.optimize import linear_sum_assignment
 from scipy.linalg import solve_triangular, norm
 
@@ -71,10 +71,10 @@ def compute_from_rot_block_dirs(bdirs, gt_fdirs, random_rot=False, verbose=True)
         tform = Pose(euler=Euler(roll=r1, pitch=r2, yaw=r3))
         r_bdirs = [tform_point(tform, bdir) for bdir in bdirs]
         r_gt_fdirs = [tform_point(tform, fdir) for fdir in gt_fdirs]
-        f_rays, lin_set = computeFeasibleRegionFromBlockDir(r_bdirs, verbose)
+        f_rays, lin_set = compute_feasible_region_from_block_dir(r_bdirs, verbose)
         return f_rays, lin_set, r_gt_fdirs
     else:
-        f_rays, lin_set = computeFeasibleRegionFromBlockDir(bdirs, verbose)
+        f_rays, lin_set = compute_feasible_region_from_block_dir(bdirs, verbose)
         return f_rays, lin_set, gt_fdirs
 
 

@@ -2,7 +2,11 @@ import numpy as np
 from numpy.linalg import norm
 import cdd
 
-def computeFeasibleRegionFromBlockDir(block_dirs, verbose=False):
+__all__ = [
+    'compute_feasible_region_from_block_dir',
+]
+
+def compute_feasible_region_from_block_dir(block_dirs, verbose=False):
     """ Compute extreme ray representation of feasible assembly region,
     given blocking direction vectors.
 

@@ -47,7 +47,7 @@ setup(
         "Repository": "https://github.com/yijiangh/pychoreo",
         "Issues": "https://github.com/yijiangh/pychoreo/issues",
     },
-    packages=['choreo'],
+    packages=['choreo', 'conrob_pybullet'],
     # package_dir={'': ''},
     package_data={},
     data_files=[],

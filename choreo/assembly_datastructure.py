@@ -3,6 +3,13 @@ import numpy as np
 # from profilehooks import timecall, profile
 from collections import namedtuple
 
+__all__ = [
+    'Brick',
+    'AssemblyJoint',
+    'AssemblyElement',
+    'AssemblyNetwork',
+    ]
+
 # NOTE: this module should be replaced with the upcoming
 # compas_fab.assembly.datastructures
 

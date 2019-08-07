@@ -1,15 +1,12 @@
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'choreo'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'conrob_pybullet'))
-
 import pytest
 
 import choreo
-from choreo.extrusion.extrusion_utils import load_extrusion, create_elements
-from choreo.assembly_datastructure import AssemblyNetwork
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect
+from choreo.extrusion import load_extrusion, create_elements
+from choreo import AssemblyNetwork
+from conrob_pybullet import connect, disconnect
 
 class Test_extrusion_utils(object):
     """ Test class for extrusion utils fn. """

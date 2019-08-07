@@ -11,6 +11,11 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, create_cy
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name
 from choreo.assembly_datastructure import AssemblyElement
 
+__all__ = [
+    'load_extrusion',
+    'create_elements',
+]
+
 EXTRUSION_DIRECTORY = os.path.join('..', '..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
     'djmm_test_block': 'djmm_test_block_S1_03-14-2019_w_layer.json ',

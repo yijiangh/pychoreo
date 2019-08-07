@@ -5,3 +5,7 @@ pybullet
 # dev dependencies
 pycddlib
 scipy
+
+# Not released on pip yet
+# ikfast_pybind
+# py_vhacd

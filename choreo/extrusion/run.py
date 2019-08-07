@@ -39,6 +39,10 @@ else:
     USE_MESHCAT = True
 USE_MESHCAT = False
 
+__all__ = [
+    'AssemblyCSP',
+]
+
 SPARSE_LADDER_GRAPH_SOLVE_TIMEOUT = 2
 
 LOG_CSP = True
