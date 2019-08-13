@@ -9,7 +9,7 @@ exclude choreo/deformed_frame_viz.py
 recursive-include conrob_pybullet/ss_pybullet/pybullet_tools *.py
 recursive-include conrob_pybullet/ss_pybullet/motion *.py
 recursive-include conrob_pybullet/utils *.py
-prune conrob_pybullet/ss_pybullet/pybullet_tools/ikfast
+# prune conrob_pybullet/ss_pybullet/pybullet_tools/ikfast
 
 include LICENSE
 include README.md
