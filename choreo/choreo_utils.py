@@ -239,7 +239,7 @@ def interpolate_straight_line_pts(p1, p2, disc_len):
         advance = np.delete(advance, -2)
     return [tuple(p1 + t*(p2-p1)/e_len) for t in advance]
 
-def interpolate_cartesian_poses(pose_1, pose_2, disc_len):
+def interpolate_cartesian_poses(pose_1, pose_2, disc_len, mount_link_from_tcp=None):
     p1 = np.array(pose_1[0])
     p2 = np.array(pose_2[0])
     e_len = np.linalg.norm(p1 - p2)
@@ -252,7 +252,11 @@ def interpolate_cartesian_poses(pose_1, pose_2, disc_len):
     e2 = euler_from_quat(pose_2[1])
     # TODO: slerp interpolation on poses
 
-    return [Pose(point=(p1 + t*(p2-p1)/e_len), euler=e1) for t in advance]
+    world_from_tcps = [Pose(point=(p1 + t*(p2-p1)/e_len), euler=e1) for t in advance]
+    if mount_link_from_tcp:
+        return [multiply(world_from_tcp, invert(mount_link_from_tcp)) for world_from_tcp in world_from_tcps]
+    else:
+        return world_from_tcps
 
 def generate_way_point_poses(p1, p2, phi, theta, ee_yaw, disc_len):
     way_points = interpolate_straight_line_pts(p1, p2, disc_len)
