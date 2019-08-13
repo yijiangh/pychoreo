@@ -4,7 +4,7 @@ import numpy as np
 from collections import namedtuple
 
 __all__ = [
-    'Brick',
+    # 'Brick',
     'AssemblyJoint',
     'AssemblyElement',
     'AssemblyNetwork',
