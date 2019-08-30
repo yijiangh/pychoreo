@@ -360,7 +360,9 @@ def main(precompute=False):
             if mo_id in element_seq.values():
                 cur_mo_list.extend(mo.body)
 
-        place2pick_path = plan_joint_motion(robot, movable_joints, picknplace_cart_plans[seq_id]['pick_approach'][0], obstacles=static_obstacles + cur_mo_list, self_collisions=SELF_COLLISIONS)
+        place2pick_path = plan_joint_motion(robot, movable_joints, 
+                            picknplace_cart_plans[seq_id]['pick_approach'][0], 
+                            obstacles=static_obstacles + cur_mo_list, self_collisions=SELF_COLLISIONS)
         if not place2pick_path:
             print('seq #{} cannot find place2pick transition'.format(seq_id))
             print('Diagnosis...')

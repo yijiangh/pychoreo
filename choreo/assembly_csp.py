@@ -23,7 +23,11 @@ __all__ = [
     'cmaps_forward_check',
 ]
 
-SELF_COLLISIONS = False
+SELF_COLLISIONS = True
+SUPPORTED_PLANNING_PROBLEM_TYPES = [
+    'extrusion',
+    'picknplace'
+]
 
 # constraint fn placeholder
 def always_false_constraint_fn(A, a, B, b):
@@ -36,7 +40,7 @@ class AssemblyCSP(CSP):
 
     """
     def __init__(self, robot=None, obstacles=[], assembly_network=None, stiffness_checker=None,
-                 vom=None, search_method=None, use_layer=True):
+                 vom=None, search_method=None, use_layer=False, problem_type='extrusion'):
         self.search_method = search_method
 
         assert(isinstance(assembly_network, AssemblyNetwork))
@@ -63,6 +67,8 @@ class AssemblyCSP(CSP):
         CSP.__init__(self, variables=list(range(n)), domains=decomposed_domains,
                      neighbors=UniversalDict(list(range(n))), constraints=always_false_constraint_fn)
 
+        assert problem_type in SUPPORTED_PLANNING_PROBLEM_TYPES
+        self._problem_type = problem_type
         self.start_time = time.time()
         self.robot = robot
         self.disabled_collisions = get_disabled_collisions(robot)
@@ -173,7 +179,12 @@ class AssemblyCSP(CSP):
                             continue
                         exist_e_id = assignment[k]
                         # TODO: check print nodal direction n1 -> n2
-                        val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
+                        if self._problem_type == 'extrusion':
+                            val_cmap = update_collision_map(self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
+                        elif self._problem_type == 'picknplace':
+                            val_cmap = update_collision_map_picknplace(
+                                self.net, self.ee_body, val, exist_e_id, val_cmap, self.obstacles)
+
                         if sum(val_cmap) == 0:
                             success = False
                             self.constr_check_time['exist_valid_ee_pose'][success] += 1
@@ -216,15 +227,28 @@ class AssemblyCSP(CSP):
                         self.constr_check_time['exist_valid_ee_pose'][success] += 1
                         return success
 
-                collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
-                                                attachments=[], self_collisions=SELF_COLLISIONS,
-                                                disabled_collisions=self.disabled_collisions,
-                                                custom_limits={})
-                success = check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+
+                if self._problem_type == 'extrusion':
+                    collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+                                                    attachments=[], self_collisions=SELF_COLLISIONS,
+                                                    disabled_collisions=self.disabled_collisions,
+                                                    custom_limits={})
+                    success = check_exist_valid_kinematics(self.net, val, self.robot, val_cmap, collision_fn)
+
+                elif self._problem_type == 'picknplace':
+                    collision_fn = get_collision_fn(self.robot, get_movable_joints(self.robot), built_obstacles,
+                                                    attachments=[], self_collisions=SELF_COLLISIONS,
+                                                    disabled_collisions=self.disabled_collisions,
+                                                    custom_limits={})
+                    success = check_exist_valid_kinematics_picknplace(self.net, val, self.robot, val_cmap, collision_fn)
+
                 self.constr_check_time['exist_valid_ee_pose'][success] += 1
                 return success
 
-        constraint_fns = [alldiff, connect, exist_valid_ee_pose, stiffness]
+        if self._problem_type == 'extrusion':
+            constraint_fns = [alldiff, connect, exist_valid_ee_pose, stiffness]
+        elif self._problem_type == 'picknplace':
+            constraint_fns = [alldiff, connect, exist_valid_ee_pose]
 
         violation = [not fn(self, var, val, assignment) for fn in constraint_fns]
         # print('constraint violation: {}'.format(violation))

@@ -135,14 +135,27 @@ def sample_ee_yaw():
     return random.uniform(-np.pi, np.pi)
 
 def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disabled_collisions=set(),
-                     custom_limits={}, **kwargs):
+                     custom_limits={}, ignored_pairs=[], **kwargs):
     """copy from pybullet.utils to allow dynmic collision objects"""
     # TODO: convert most of these to keyword arguments
     check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
     moving_bodies = [body] + [attachment.child for attachment in attachments]
     if obstacles is None:
         obstacles = list(set(get_bodies()) - set(moving_bodies))
-    check_body_pairs = list(product(moving_bodies, obstacles))  # + list(combinations(moving_bodies, 2))
+    else:
+        obstacles = list(set(get_bodies()) - set(moving_bodies))
+    check_body_pairs = list(set(product(moving_bodies, obstacles)))  # + list(combinations(moving_bodies, 2))
+
+    if ignored_pairs:
+        for body_pair in ignored_pairs:
+            found = False
+            for c_body_pair in check_body_pairs:
+                if body_pair[0] in c_body_pair and body_pair[1] in c_body_pair:
+                    check_body_pairs.remove(c_body_pair)
+                    found = True
+                if found:
+                    break
+
     lower_limits, upper_limits = get_custom_limits(body, joints, custom_limits)
 
     # TODO: maybe prune the link adjacent to the robot
@@ -296,6 +309,58 @@ def update_collision_map(assembly_network, ee_body, print_along_e_id, exist_e_id
             # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
 
     return print_along_cmap
+
+
+def check_exist_valid_kinematics_picknplace(assembly_network, e_id, robot, cmap, collision_fn):
+    assert(len(cmap) == PHI_DISC * THETA_DISC)
+    p1, p2 = assembly_network.get_end_points(e_id)
+    way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
+    free_cmap_ids = [i for i in range(len(cmap)) if cmap[i] == 1]
+
+    st_time = time.time()
+    while True:
+        direction_id = random.choice(free_cmap_ids)
+        phi, theta = cmap_id2angle(direction_id)
+        if check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
+            return True
+        if time.time() - st_time > KINEMATICS_CHECK_TIMEOUT:
+            return False
+
+
+def update_collision_map_picknplace(assembly_network, ee_body, print_along_e_id, exist_e_id, print_along_cmap, static_bodies=[], check_ik=False, robot=None, collision_fn=None):
+    """
+    :param print_along_e_id: element id that end effector is printing along
+    :param exist_e_id: element that is assumed printed, checked against
+    :param print_along_cmap: print_along_element's collsion map, a list of bool,
+        entry = 1 means collision-free (still available),  entry=0 means not feasible
+    :return:
+    """
+    # TODO: check n1 -> n2 and self direction
+    assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
+    p1, p2 = assembly_network.get_end_points(print_along_e_id)
+    way_points = interpolate_straight_line_pts(p1, p2, WAYPOINT_DISC_LEN)
+    if exist_e_id != print_along_e_id:
+        exist_e_body = assembly_network.get_element_body(exist_e_id)
+    else:
+        exist_e_body = None
+    # assert(has_body(exist_e_body))
+
+    for i, c_val in enumerate(print_along_cmap):
+        if c_val == 1:
+            phi, theta = cmap_id2angle(i)
+            if check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body, static_bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
+                print_along_cmap[i] = 0
+            else:
+                # exist feasible EE body pose, check ik
+                if check_ik:
+                    assert(check_ik and collision_fn and robot)
+                    if not check_valid_kinematics(robot, way_points, phi, theta, collision_fn):
+                        print_along_cmap[i] = 0
+
+            # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
+
+    return print_along_cmap
+
 
 def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap,
                                printed_nodes, bodies=[]):
@@ -537,13 +602,23 @@ def pairwise_link_collision_diagnosis(body1, link1, body2, link2, max_distance=M
                               physicsClientId=CLIENT)
 
 def get_collision_fn_diagnosis(body, joints, obstacles, attachments, self_collisions, disabled_collisions=set(),
-                            custom_limits={}, **kwargs):
+                            custom_limits={}, ignored_pairs=[], **kwargs):
     # TODO: convert most of these to keyword arguments
+    # check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
+    # moving_bodies = [body] + [attachment.child for attachment in attachments]
+    # if obstacles is None:
+    #     obstacles = list(set(get_bodies()) - set(moving_bodies))
+    # check_body_pairs = list(product(moving_bodies, obstacles))  # + list(combinations(moving_bodies, 2))
+    # lower_limits, upper_limits = get_custom_limits(body, joints, custom_limits)
+
     check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
     moving_bodies = [body] + [attachment.child for attachment in attachments]
     if obstacles is None:
         obstacles = list(set(get_bodies()) - set(moving_bodies))
-    check_body_pairs = list(product(moving_bodies, obstacles))  # + list(combinations(moving_bodies, 2))
+    else:
+        obstacles = list(set(obstacles) - set(moving_bodies))
+    check_body_pairs = list(set(product(moving_bodies, obstacles)))  # + list(combinations(moving_bodies, 2))
+
     lower_limits, upper_limits = get_custom_limits(body, joints, custom_limits)
 
     # TODO: maybe prune the link adjacent to the robot
@@ -634,3 +709,53 @@ def color_print(msg):
 
 def int2element_id(id):
     return 'e_' + str(id)
+
+def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
+    """get the best solution based on closeness to the q_guess and weighted joint diff
+    
+    Parameters
+    ----------
+    sols : [type]
+        [description]
+    q_guess : [type]
+        [description]
+    joint_limits : [type]
+        [description]
+    weights : [type], optional
+        [description], by default None
+    best_sol_only : bool, optional
+        [description], by default False
+    
+    Returns
+    -------
+    lists of joint conf (list)
+    or
+    joint conf (list)
+    """
+    import numpy as np
+    valid_sols = []
+    dof = len(q_guess)
+    if not weights:
+        weights = [1.0] * dof
+    else:
+        assert dof == len(weights)
+
+    for sol in sols:
+        test_sol = np.ones(dof)*9999.
+        for i in range(dof):
+            for add_ang in [-2.*np.pi, 0, 2.*np.pi]:
+                test_ang = sol[i] + add_ang
+                if (test_ang <= joint_limits[i][1] and test_ang >= joint_limits[i][0] and \
+                    abs(test_ang - q_guess[i]) < abs(test_sol[i] - q_guess[i])):
+                    test_sol[i] = test_ang
+        if np.all(test_sol != 9999.):
+            valid_sols.append(test_sol.tolist())
+
+    if len(valid_sols) == 0:
+        return []
+
+    if best_sol_only:
+        best_sol_ind = np.argmin(np.sum((weights*(valid_sols - np.array(q_guess)))**2,1))
+        return valid_sols[best_sol_ind]
+    else:
+        return valid_sols

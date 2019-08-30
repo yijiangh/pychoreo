@@ -270,7 +270,7 @@ def backtracking_search(csp,
 
     def backtrack(assignment):
         if DEBUG and KEYBOARD_STEP_SEARCH:
-            raw_input("deeper search: ")
+            input("deeper search: ")
         print('assignment len:{}'.format(len(assignment)))
         if len(assignment) == len(csp.variables):
             return assignment

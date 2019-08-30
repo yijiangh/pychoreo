@@ -1,26 +1,29 @@
 import numpy as np
+from numpy.linalg import norm
 import time
 import random
 from copy import deepcopy, copy
+from itertools import product
 
 import pybullet as pyb
 from choreo.choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts, get_collision_fn, \
- generate_way_point_poses, make_print_pose, sample_ee_yaw, interpolate_cartesian_poses
+ generate_way_point_poses, make_print_pose, sample_ee_yaw, interpolate_cartesian_poses, snap_sols
 # from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 # from conrob_pybullet.utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, get_track_arm_joints, get_track_joint
 
 from choreo.assembly_datastructure import AssemblyNetwork
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
-    wait_for_user, remove_debug, remove_body, has_gui, joints_from_names, link_from_name, matrix_from_quat
+    wait_for_user, remove_debug, remove_body, has_gui, joints_from_names, link_from_name, matrix_from_quat, get_joint_limits
 from choreo.extrusion.extrusion_utils import get_disabled_collisions
 
+# this is temporal...
 from compas_fab.backends.ros.plugins_choreo import sample_tool_ik, best_sol
 
 DEBUG=False
 DEFAULT_UNIT_PROCESS_TIMEOUT = 10
 DEFAULT_SPARSE_GRAPH_RUNG_TIMEOUT = 4
-SELF_COLLISIONS=False
+SELF_COLLISIONS=True
 # utils
 
 __all__ = [
@@ -152,29 +155,22 @@ class LadderGraph(object):
 
 class EdgeBuilder(object):
     """edge builder for ladder graph, construct edges for fully connected biparte graph"""
-    def __init__(self, n_start, n_end, dof, upper_tm=None, joint_vel_limits=None, use_mod2pi_dist=False):
+    def __init__(self, n_start, n_end, dof, upper_tm=None, joint_vel_limits=None):
         self.result_edges_ = [[] for i in range(n_start)]
         self.edge_scratch_ = [LadderGraphEdge(idx=None, cost=None) for i in range(n_end)] # preallocated space to work on
         self.dof_ = dof
-        self.delta_buffer_ = [0] * dof
+        self.delta_buffer_ = [0 for i in range(dof)]
         self.count_ = 0
         self.has_edges_ = False
-        self.use_mod2pi_dist = use_mod2pi_dist
 
     def consider(self, st_jt, end_jt, index):
         """index: to_id"""
         # TODO check delta joint val exceeds the joint_vel_limits
+        cost = 0
         for i in range(self.dof_):
-            if not self.use_mod2pi_dist:
-                self.delta_buffer_[i] = abs(st_jt[i] - end_jt[i])
-            else:
-                absdiff = abs(end_jt[i] - st_jt[i]) 
-                if abs(absdiff % (np.pi*2) - absdiff) < 1e-7:
-                    res = abs(absdiff - np.pi*2) % (np.pi*2)
-                else:
-                    res = absdiff % (np.pi*2)
-                self.delta_buffer_[i] = res
-        cost = sum(self.delta_buffer_)
+            cost += abs(st_jt[i] - end_jt[i])
+
+        # cost = sum(self.delta_buffer_)
         assert(self.count_ < len(self.edge_scratch_))
         self.edge_scratch_[self.count_].cost = cost
         self.edge_scratch_[self.count_].idx = index
@@ -246,11 +242,11 @@ def concatenate_graph_vertically(graph_above, graph_below):
         above_jts.extend(below_jts)
         if i != num_rungs - 1:
             # shifting target vert id in below_edges
-            next_above_rung_size = graph_below.get_rung_vert_size(i + 1)
+            next_above_rung_size = graph_above.get_rung_vert_size(i + 1)
             below_edges = graph_below.get_edges(i)
             for v_out_edges in below_edges:
                 e_copy = deepcopy(v_out_edges)
-                for v_out_e in v_out_edges:
+                for v_out_e in e_copy:
                     v_out_e.idx += next_above_rung_size
                 rung_above.edges.append(e_copy)
     return graph_above
@@ -294,6 +290,7 @@ class DAGSearch(object):
 
     def run(self):
         """forward cost propagation"""
+        # TODO: add st_conf cost to SolutionRung 0
         # first rung init to 0
         self.solution[0].distance = [0] * len(self.solution[0])
 
@@ -322,10 +319,11 @@ class DAGSearch(object):
         path_idx = [0] * len(self.solution)
 
         current_v_id = min_idx
-        for i in range(len(path_idx)):
-            count = len(path_idx) - 1 - i
+        count = len(path_idx) - 1
+        for _ in range(len(path_idx)):
             path_idx[count] = current_v_id
             current_v_id = self.predecessor(count, current_v_id)
+            count -= 1
 
         sol = []
         for r_id, v_id in enumerate(path_idx):
@@ -660,7 +658,7 @@ def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, o
 
 
 def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, ee_link_name, ik_fn,
-    unit_geo, disc_len, obstacles, mount_link_from_tcp_pose=None, ee_attachs=[], use_mod2pi_dist=False, viz=False):
+    unit_geo, disc_len, obstacles, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, st_conf=[]):
     """ unit_geo : compas_fab.assembly.datastructures.UnitGeometry"""
     # TODO: lazy collision check
     # TODO: dt, timing constraint
@@ -731,52 +729,67 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             attach_from_object = multiply(mount_link_from_tcp_pose, invert(grasp.object_from_attach_pb_pose))
         else:
             attach_from_object = invert(grasp.object_from_attach_pb_pose)
+
+        temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, attach2retreat_pick[0], get_all=True)
+        set_joint_positions(robot, ik_joints, temp_jt_list[0])
+        for e_body in unit_geo.pybullet_bodies:
+            set_pose(e_body, unit_geo.initial_pb_pose)
         attachs = [Attachment(robot, tool_link, attach_from_object, e_body) for e_body in unit_geo.pybullet_bodies]
         if ee_attachs:
             attachs.extend(ee_attachs)
+
+        ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
+        # appraoch 2 pick 
         collision_fns.append(get_collision_fn(robot, ik_joints, obstacles + unit_geo.pybullet_bodies,
-                                              attachments=[], self_collisions=SELF_COLLISIONS,
-                                              custom_limits={}))
-        # TODO: include EE attach here
-        # collision_fns.append(get_collision_fn(robot, ik_joints, obstacles + unit_geo.pybullet_bodies,
-        #                                       attachments=ee_attachs, self_collisions=SELF_COLLISIONS,
-        #                                       custom_limits={}))
-
+                                              attachments=ee_attachs, self_collisions=SELF_COLLISIONS,
+                                              custom_limits={}, ignored_pairs=ignored_pairs))
+        # pick 2 retreat 
         collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
+                                              attachments=ee_attachs + attachs, self_collisions=SELF_COLLISIONS,
                                               custom_limits={}))
+        # approach 2 place 
         collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
+                                              attachments=ee_attachs + attachs, self_collisions=SELF_COLLISIONS,
                                               custom_limits={}))
-
-        # TODO: add placed body to collision here
-        # collision_fns.append(get_collision_fn(robot, ik_joints, obstacles + brick.body,
-        #                                       attachments=attachs, self_collisions=SELF_COLLISIONS,
-        #                                       custom_limits={}))
+        # place 2 retreat 
         collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=attachs, self_collisions=SELF_COLLISIONS,
-                                              custom_limits={}))
+                                              attachments=ee_attachs, self_collisions=SELF_COLLISIONS,
+                                              custom_limits={}, ignored_pairs=ignored_pairs))
 
         graph = LadderGraph(dof)
         graph.resize(len(picknplace_poses))
         is_empty = False
-        # found_track_jt_val = {sub_proc_id : [] for sub_proc_id in range(1+max(process_map.values()))}
-        # found_track_jt_val = {sub_proc_id : [] for sub_proc_id in range(2)}
 
         # solve ik for each pose, build all rungs (w/o edges)
         for i, pose in enumerate(picknplace_poses):
             # TODO: special sampler for 6+ extra dofs
+            # sub_id = 0 -> pick, sub_id = 1 -> place
             sub_id = 0 if process_map[i] < 2 else 1
-            # jt_list = sample_tool_ik(robot, pose, get_all=True, max_attempts=1000, prev_free_list=found_track_jt_val[sub_id])
+
             jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
+
+            if st_conf:
+                # print('before snap: ', jt_list)
+                joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
+                jt_list = snap_sols(jt_list, st_conf, joint_limits)
+                # print('after snap: ', jt_list)
+
             if process_map[i] == 3:
                 # the object is in its goal pose in place-retreat phase
                 for e_body in unit_geo.pybullet_bodies:
                     set_pose(e_body, unit_geo.goal_pb_pose)
 
             jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
+
             # jt_list = [jts for jts in jt_list]
-            # print(jt_list)
+            # if i == 0:
+            #     print('process map: ', process_map[i])
+            #     print(jt_list)
+            #     for conf in jt_list:
+            #         set_joint_positions(robot, ik_joints, conf)
+            #         for ea in ee_attachs: ea.assign()
+            #         wait_for_user()
+
             if not jt_list or all(not jts for jts in jt_list):
                 print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(unit_geo.name, i, grasp._grasp_id))
                 is_empty = True
@@ -787,9 +800,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                         set_joint_positions(robot, ik_joints, jt)
                         for ea in ee_attachs: ea.assign()
                         print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format(jt_id, unit_geo.name, i, grasp._grasp_id))
-                        # print('track jt val: {}'.format(jt[track_jt_id]))
                         wait_for_user()
-                # wait_for_user()
 
                 # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
                 graph.assign_rung(i, jt_list)
@@ -799,7 +810,6 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             #     remove_debug(l)
             continue
         print('Found!!! at brick #{0} grasp id #{1}'.format(unit_geo.name, grasp._grasp_id))
-        # print(graph)
         # wait_for_user()
 
         # build edges
@@ -810,7 +820,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             jt2_list = graph.get_data(end_id)
             st_size = graph.get_rung_vert_size(st_id)
             end_size = graph.get_rung_vert_size(end_id)
-            edge_builder = EdgeBuilder(st_size, end_size, dof, use_mod2pi_dist=use_mod2pi_dist)
+            edge_builder = EdgeBuilder(st_size, end_size, dof)
 
             for k in range(st_size):
                 st_id = k * dof
@@ -840,10 +850,21 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
 def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
         unit_geo_dict, element_seq, obstacle_from_name, 
-        tcp_transf=None, ee_attachs=[], max_attempts=100, use_mod2pi_dist=False, viz=False):
+        tcp_transf=None, ee_attachs=[], max_attempts=100, viz=False, st_conf=None):
     dof = len(get_movable_joints(robot))
     graph_list = []
     built_obstacles = list(obstacle_from_name.values())
+
+    def flatten_unit_geos_bodies(in_dict):
+        out_list = []
+        for ug in in_dict.values():
+            out_list.extend(ug.pybullet_bodies)
+        return out_list
+
+    # reset all bodies
+    for unit_geo in unit_geo_dict.values():
+        for g_body in unit_geo.pybullet_bodies:
+            set_pose(g_body, unit_geo.initial_pb_pose)
 
     graph_sizes = []
     for seq_id, e_id in element_seq.items():
@@ -852,8 +873,8 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
         for run_iter in range(max_attempts):
             graph, sub_graph_sizes = \
             generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
-            unit_geo, WAYPOINT_DISC_LEN, built_obstacles, 
-            ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, use_mod2pi_dist=use_mod2pi_dist, viz=viz)
+            unit_geo, WAYPOINT_DISC_LEN, built_obstacles + flatten_unit_geos_bodies(unit_geo_dict), 
+            ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, viz=viz, st_conf=st_conf)
 
             if graph.size > 0:
                 graph_list.append(graph)
@@ -872,13 +893,17 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
 
         for e_body in unit_geo.pybullet_bodies:
             set_pose(e_body, unit_geo.goal_pb_pose)
-        built_obstacles.extend(unit_geo.pybullet_bodies)
-
-    # print('**************************')
-    # print(graph_list)
-    # print(graph_sizes)
 
     unified_graph = LadderGraph(dof)
+
+    # if st_conf:
+    #     assert len(st_conf) == dof
+    #     # TODO: check if st_conf in joint limits
+    #     st_graph = LadderGraph(dof)
+    #     st_graph.resize(1)
+    #     st_graph.assign_rung(0, [st_conf])
+    #     unified_graph = append_ladder_graph(unified_graph, st_graph)
+
     for g in graph_list:
         unified_graph = append_ladder_graph(unified_graph, g)
 
@@ -886,8 +911,9 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
     dag_search.run()
     tot_traj = dag_search.shortest_path()
 
-    # graph_sizes = []
-    # tot_traj = []
+    # if st_conf:
+    #     tot_traj.pop(0)
+
     return tot_traj, graph_sizes
 
 def generate_hybrid_motion_plans():
