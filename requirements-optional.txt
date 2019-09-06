@@ -1,2 +1,2 @@
-conmech >= 0.1.1
-meshcat
+pyconmech >= 0.1.1
+# meshcat

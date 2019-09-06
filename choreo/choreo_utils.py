@@ -12,9 +12,11 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
     get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
     tform_point, matrix_from_quat, MAX_DISTANCE, set_color, wait_for_user, set_camera_pose, \
-    add_body_name, get_name, euler_from_quat, add_fixed_constraint
+    add_body_name, get_name, euler_from_quat, add_fixed_constraint, get_sample_fn, get_extend_fn, \
+    get_distance_fn, get_joint_positions, check_initial_end
 # from .assembly_csp import AssemblyCSP
-from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+
+from conrob_pybullet.ss_pybullet.motion.motion_planners.rrt_connect import birrt
 
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 EPS = 1e-5
@@ -759,3 +761,22 @@ def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
         return valid_sols[best_sol_ind]
     else:
         return valid_sols
+
+
+def plan_joint_motion(body, joints, end_conf, obstacles=None, attachments=[],
+                      self_collisions=True, disabled_collisions=set(),
+                      weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, **kwargs):
+
+    assert len(joints) == len(end_conf)
+    sample_fn = get_sample_fn(body, joints, custom_limits=custom_limits)
+    distance_fn = get_distance_fn(body, joints, weights=weights)
+    extend_fn = get_extend_fn(body, joints, resolutions=resolutions)
+    collision_fn = get_collision_fn(body, joints, obstacles, attachments, self_collisions, disabled_collisions,
+                                    custom_limits=custom_limits, max_distance=max_distance)
+
+    start_conf = get_joint_positions(body, joints)
+
+    if not check_initial_end(start_conf, end_conf, collision_fn):
+        return None
+    return birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, **kwargs)
+    #return plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn)
