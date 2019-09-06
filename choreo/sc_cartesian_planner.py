@@ -731,6 +731,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             attach_from_object = invert(grasp.object_from_attach_pb_pose)
 
         temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, attach2retreat_pick[0], get_all=True)
+        if not temp_jt_list:
+            continue
         set_joint_positions(robot, ik_joints, temp_jt_list[0])
         for e_body in unit_geo.pybullet_bodies:
             set_pose(e_body, unit_geo.initial_pb_pose)
@@ -835,8 +837,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
             graph.assign_edges(i, edges)
 
-        if has_gui() and viz:
-            wait_for_user()
+        if has_gui() and viz: 
             for l in [line for pose in pose_handle for line in pose]:
                 remove_debug(l)
 
@@ -850,7 +851,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
 def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
         unit_geo_dict, element_seq, obstacle_from_name, 
-        tcp_transf=None, ee_attachs=[], max_attempts=100, viz=False, st_conf=None):
+        tcp_transf=None, ee_attachs=[], max_attempts=2, viz=False, st_conf=None):
     dof = len(get_movable_joints(robot))
     graph_list = []
     built_obstacles = list(obstacle_from_name.values())
