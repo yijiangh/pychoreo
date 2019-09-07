@@ -4,16 +4,17 @@ import time
 import datetime
 import numpy as np
 import pybullet as p
-from itertools import product
+from itertools import product, combinations, count
 import json
 from collections import OrderedDict, namedtuple
 
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     set_joint_positions, pairwise_collision, Pose, multiply, Point, HideOutput, load_pybullet, link_from_name, \
-    get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_self_link_pairs, get_custom_limits, all_between, pairwise_link_collision, \
+    get_link_pose, invert, get_bodies, set_pose, add_text, CLIENT, BASE_LINK, get_custom_limits, all_between, pairwise_link_collision, \
     tform_point, matrix_from_quat, MAX_DISTANCE, set_color, wait_for_user, set_camera_pose, \
     add_body_name, get_name, euler_from_quat, add_fixed_constraint, get_sample_fn, get_extend_fn, \
-    get_distance_fn, get_joint_positions, check_initial_end
+    get_distance_fn, get_joint_positions, check_initial_end, get_moving_links, get_links, get_moving_pairs, are_links_adjacent, \
+    link_pairs_collision, draw_link_name, get_link_name, get_all_links, remove_debug, get_distance
 # from .assembly_csp import AssemblyCSP
 
 from conrob_pybullet.ss_pybullet.motion.motion_planners.rrt_connect import birrt
@@ -68,6 +69,10 @@ def add_text(text, position=(0, 0, 0), color=(0, 0, 0), lifetime=None, parent=-1
     return p.addUserDebugText(str(text), textPosition=position, textColorRGB=color, textSize=text_size,
                               lifeTime=0, parentObjectUniqueId=parent, parentLinkIndex=parent_link,
                               physicsClientId=CLIENT)
+
+def draw_link_name(body, link):
+    link_pt = get_link_pose(body, link)[0]
+    return add_text(get_link_name(body, link), position=(link_pt[0], link_pt[1], link_pt[2] + 0.1), parent=body, parent_link=link)
 
 def draw_element(node_points, element, color=(1, 0, 0)):
     n1, n2 = element.node_ids
@@ -136,16 +141,48 @@ def cmap_id2angle(id, return_direction_vector=False):
 def sample_ee_yaw():
     return random.uniform(-np.pi, np.pi)
 
-def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disabled_collisions=set(),
-                     custom_limits={}, ignored_pairs=[], **kwargs):
+def get_self_link_pairs(body, joints, disabled_collisions=set(), only_moving=True, attachments=[]):
+    moving_links = get_moving_links(body, joints) 
+    fixed_links = list(set(get_links(body)) - set(moving_links))
+    check_link_pairs = list(product(moving_links, fixed_links))
+    if only_moving:
+        check_link_pairs.extend(get_moving_pairs(body, joints))
+    else:
+        check_link_pairs.extend(combinations(moving_links, 2))
+    check_link_pairs = list(filter(lambda pair: not are_links_adjacent(body, *pair), check_link_pairs))
+    check_link_pairs = list(filter(lambda pair: (pair not in disabled_collisions) and
+                                                (pair[::-1] not in disabled_collisions), check_link_pairs))
+    return check_link_pairs
+
+
+def get_link_attached_body_pairs(body, attachments=[]):
+    link_body_pairs = []
+    body_links = get_links(body)
+
+    for attach in attachments:
+        if attach.child in [pair[1] for pair in link_body_pairs]:
+            continue
+        if attach.parent == body:
+            body_check_links = list(filter(lambda b_l : attach.parent_link != b_l and \
+                not are_links_adjacent(body, b_l, attach.parent_link), body_links))
+            link_body_pairs.append((body_check_links, attach.child))
+
+    return link_body_pairs
+
+
+def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=True, disabled_collisions=set(),
+                     custom_limits={}, ignored_pairs=[], diagnosis=False, **kwargs):
     """copy from pybullet.utils to allow dynmic collision objects"""
     # TODO: convert most of these to keyword arguments
-    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions) if self_collisions else []
+    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions=disabled_collisions, 
+        attachments=attachments) if self_collisions else []
+    check_link_attach_body_pairs = get_link_attached_body_pairs(body, attachments)
+
     moving_bodies = [body] + [attachment.child for attachment in attachments]
     if obstacles is None:
         obstacles = list(set(get_bodies()) - set(moving_bodies))
     else:
-        obstacles = list(set(get_bodies()) - set(moving_bodies))
+        obstacles = list(set(obstacles) - set(moving_bodies))
     check_body_pairs = list(set(product(moving_bodies, obstacles)))  # + list(combinations(moving_bodies, 2))
 
     if ignored_pairs:
@@ -170,10 +207,47 @@ def get_collision_fn(body, joints, obstacles, attachments, self_collisions, disa
             attachment.assign()
         if dynamic_obstacles:
             check_body_pairs.extend(list(product(moving_bodies, dynamic_obstacles)))
+
+        # body's link-link self collision
         for link1, link2 in check_link_pairs:
             # Self-collisions should not have the max_distance parameter
             if pairwise_link_collision(body, link1, body, link2): #, **kwargs):
                 return True
+
+        # body's link - attached bodies collision
+        for body_links, at_body in check_link_attach_body_pairs:
+            if link_pairs_collision(body, body_links, at_body):
+                if diagnosis:
+                    print('body - attachment collision!')
+                    cr = link_pairs_collision_diagnosis(body, body_links, at_body)
+                    if cr:
+                        for u_cr in cr:
+                            handles = []
+                            b1 = get_body_from_pb_id(u_cr[1])
+                            b2 = get_body_from_pb_id(u_cr[2])
+                            l1 = u_cr[3]
+                            l2 = u_cr[4]
+                            l1_name = get_link_name(b1, l1)
+                            l2_name = get_link_name(b2, l2)
+                            print('pairwise LINK collision: Body #{0} Link #{1} - Body #{2} Link #{3}'.format(
+                                get_name(b1), l1_name, get_name(b2), l2_name))
+                            set_color(b1, (1, 0, 0, 0.2))
+                            set_color(b2, (0, 1, 0, 0.2))
+                            handles.append(add_body_name(b1))
+                            handles.append(add_body_name(b2))
+                            handles.append(draw_link_name(b1, l1))
+                            handles.append(draw_link_name(b2, l2))
+
+                            handles.append(add_line(u_cr[5], u_cr[6], color=(0,0,1), width=5))
+                            camera_base_pt = u_cr[5]
+                            camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
+                            set_camera_pose(tuple(camera_pt), camera_base_pt)
+
+                            wait_for_user()
+                            for h in handles: remove_debug(h)
+                return True
+
+        # body - body collision
         return any(pairwise_collision(*pair, **kwargs) for pair in check_body_pairs)
     return collision_fn
 
@@ -602,6 +676,16 @@ def pairwise_link_collision_diagnosis(body1, link1, body2, link2, max_distance=M
     return p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
                               linkIndexA=link1, linkIndexB=link2,
                               physicsClientId=CLIENT)
+
+def link_pairs_collision_diagnosis(body1, links1, body2, links2=None, **kwargs):
+    if links2 is None:
+        links2 = get_all_links(body2)
+    for link1, link2 in product(links1, links2):
+        if (body1 == body2) and (link1 == link2):
+            continue
+        if pairwise_link_collision(body1, link1, body2, link2, **kwargs):
+            return pairwise_link_collision_diagnosis(body1, link1, body2, link2, **kwargs)
+    return None
 
 def get_collision_fn_diagnosis(body, joints, obstacles, attachments, self_collisions, disabled_collisions=set(),
                             custom_limits={}, ignored_pairs=[], **kwargs):
