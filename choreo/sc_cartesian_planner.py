@@ -315,12 +315,11 @@ class DAGSearch(object):
 
     def shortest_path(self):
         _, min_val_id = self.solution[-1].extract_min()
-        min_idx = self.solution[-1].predecessor[min_val_id]
         path_idx = [0] * len(self.solution)
 
-        current_v_id = min_idx
+        current_v_id = min_val_id
         count = len(path_idx) - 1
-        for _ in range(len(path_idx)):
+        while count >= 0:
             path_idx[count] = current_v_id
             current_v_id = self.predecessor(count, current_v_id)
             count -= 1
