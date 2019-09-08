@@ -657,7 +657,12 @@ def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, o
 
 
 def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, ee_link_name, ik_fn,
-    unit_geo, disc_len, obstacles, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, st_conf=[]):
+    unit_geo, disc_len, 
+    assembled_element_obstacles=[], unassembled_element_obstacles=[], 
+    static_obstacles=[], self_collisions=True,
+    pick_from_same_rack=False, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
+    st_conf=[], disabled_collision_link_names=[]):
+
     """ unit_geo : compas_fab.assembly.datastructures.UnitGeometry"""
     # TODO: lazy collision check
     # TODO: dt, timing constraint
@@ -666,7 +671,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
     vertical_graph = LadderGraph(dof)
     ik_joints = joints_from_names(robot, ik_joint_names)
     tool_link = link_from_name(robot, ee_link_name)
-    # disabled_collisions = get_disabled_collisions(robot)
+    disabled_collision_links = [(link_from_name(robot, pair[0]), link_from_name(robot, pair[1])) \
+         for pair in disabled_collision_link_names]
 
     # generate path pts
     grasps = unit_geo.grasps
@@ -741,20 +747,29 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
         ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
         # appraoch 2 pick 
-        collision_fns.append(get_collision_fn(robot, ik_joints, obstacles + unit_geo.pybullet_bodies,
-                                              attachments=ee_attachs, self_collisions=SELF_COLLISIONS,
+        pick_approach_obstacles = static_obstacles + assembled_element_obstacles if pick_from_same_rack \
+            else static_obstacles + assembled_element_obstacles + unassembled_element_obstacles
+
+        collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
+                                              attachments=ee_attachs, self_collisions=self_collisions,
+                                              disabled_collisions=disabled_collision_links,
                                               custom_limits={}, ignored_pairs=ignored_pairs))
         # pick 2 retreat 
-        collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=ee_attachs + attachs, self_collisions=SELF_COLLISIONS,
+        collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
+                                              attachments=ee_attachs + attachs, self_collisions=self_collisions,
+                                              disabled_collisions=disabled_collision_links,
                                               custom_limits={}))
         # approach 2 place 
-        collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=ee_attachs + attachs, self_collisions=SELF_COLLISIONS,
+        collision_fns.append(get_collision_fn(robot, ik_joints, 
+                                              static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
+                                              attachments=ee_attachs + attachs, self_collisions=self_collisions,
+                                              disabled_collisions=disabled_collision_links,
                                               custom_limits={}))
         # place 2 retreat 
-        collision_fns.append(get_collision_fn(robot, ik_joints, obstacles,
-                                              attachments=ee_attachs, self_collisions=SELF_COLLISIONS,
+        collision_fns.append(get_collision_fn(robot, ik_joints, 
+                                              static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
+                                              attachments=ee_attachs, self_collisions=self_collisions,
+                                              disabled_collisions=disabled_collision_links,
                                               custom_limits={}, ignored_pairs=ignored_pairs))
 
         graph = LadderGraph(dof)
@@ -850,10 +865,11 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
 def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
         unit_geo_dict, element_seq, obstacle_from_name, 
+        disabled_collision_link_names=[], self_collisions=True, pick_from_same_rack=False,
         tcp_transf=None, ee_attachs=[], max_attempts=2, viz=False, st_conf=None):
     dof = len(get_movable_joints(robot))
     graph_list = []
-    built_obstacles = list(obstacle_from_name.values())
+    static_obstacles = list(obstacle_from_name.values())
 
     def flatten_unit_geos_bodies(in_dict):
         out_list = []
@@ -870,10 +886,18 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
     for seq_id, e_id in element_seq.items():
         unit_geo = unit_geo_dict[e_id]
         solved = False
+        assembled_elements = flatten_unit_geos_bodies({element_seq[i] : unit_geo_dict[element_seq[i]] for i in range(0, seq_id)})
+        unassembled_elements = flatten_unit_geos_bodies({element_seq[i] : unit_geo_dict[element_seq[i]] for i in range(seq_id+1, len(element_seq))})
         for run_iter in range(max_attempts):
             graph, sub_graph_sizes = \
             generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
-            unit_geo, WAYPOINT_DISC_LEN, built_obstacles + flatten_unit_geos_bodies(unit_geo_dict), 
+            unit_geo, WAYPOINT_DISC_LEN, 
+            pick_from_same_rack=pick_from_same_rack,
+            static_obstacles=static_obstacles, 
+            assembled_element_obstacles=assembled_elements, 
+            unassembled_element_obstacles=unassembled_elements, 
+            self_collisions=self_collisions,
+            disabled_collision_link_names=disabled_collision_link_names,
             ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, viz=viz, st_conf=st_conf)
 
             if graph.size > 0:
