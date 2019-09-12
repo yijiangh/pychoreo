@@ -819,6 +819,11 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                     # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
                     graph.assign_rung(i, jt_list)
 
+                
+                if has_gui() and viz: 
+                    for l in [line for pose in pose_handle for line in pose]:
+                        remove_debug(l)
+
             if is_empty:
                 # for l in [line for pose in pose_handle for line in pose]:
                 #     remove_debug(l)
@@ -848,10 +853,6 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                     print('no edges!')
 
                 graph.assign_edges(i, edges)
-
-            if has_gui() and viz: 
-                for l in [line for pose in pose_handle for line in pose]:
-                    remove_debug(l)
 
             if vertical_graph.size == 0:
                 vertical_graph = graph
