@@ -677,8 +677,6 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
     # generate path pts
     grasps = unit_geo.grasps
     for grasp in grasps:
-        # print('----')
-        # print(grasp)
         pose_handle = [] # visualization handle
         sub_graph_sizes = {}
 
@@ -688,178 +686,178 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
         for e_body in unit_geo.pybullet_bodies:
             set_pose(e_body, unit_geo.initial_pb_pose)
 
-        grasp_pose_seq = [grasp.object_from_approach_pb_pose, 
-                          grasp.object_from_attach_pb_pose, 
-                          grasp.object_from_retreat_pb_pose]
-        world_from_pick_poses = make_assembly_poses(unit_geo.initial_pb_pose, grasp_pose_seq)
-        world_from_place_poses = make_assembly_poses(unit_geo.goal_pb_pose, grasp_pose_seq)
+        for gp_id, goal_pose in enumerate(unit_geo.goal_pb_poses):
+            # TODO: generalize to an abstract cartesian pose class
+            grasp_pose_seq = [grasp.object_from_approach_pb_pose, 
+                              grasp.object_from_attach_pb_pose, 
+                              grasp.object_from_retreat_pb_pose]
+            world_from_pick_poses = make_assembly_poses(unit_geo.initial_pb_pose, grasp_pose_seq)
+            world_from_place_poses = make_assembly_poses(goal_pose, grasp_pose_seq)
 
-        # print('pick pose: {}'.format(world_from_pick_poses))
-        # print('place pose: {}'.format(world_from_place_poses))
+            approach2attach_pick = interpolate_cartesian_poses(world_from_pick_poses[0], world_from_pick_poses[1], 
+            disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+            sub_graph_sizes['pick_approach'] = len(approach2attach_pick)
 
-        approach2attach_pick = interpolate_cartesian_poses(world_from_pick_poses[0], world_from_pick_poses[1], 
-        disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
-        sub_graph_sizes['pick_approach'] = len(approach2attach_pick)
+            attach2retreat_pick = interpolate_cartesian_poses(world_from_pick_poses[1], world_from_pick_poses[2], 
+            disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+            sub_graph_sizes['pick_retreat'] = len(attach2retreat_pick)
 
-        attach2retreat_pick = interpolate_cartesian_poses(world_from_pick_poses[1], world_from_pick_poses[2], 
-        disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
-        sub_graph_sizes['pick_retreat'] = len(attach2retreat_pick)
+            approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
+            disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+            sub_graph_sizes['place_approach'] = len(approach2attach_place)
 
-        approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
-        disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
-        sub_graph_sizes['place_approach'] = len(approach2attach_place)
+            attach2retreat_place = interpolate_cartesian_poses(world_from_place_poses[1], world_from_place_poses[2], 
+            disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+            sub_graph_sizes['place_retreat'] = len(attach2retreat_place)
 
-        attach2retreat_place = interpolate_cartesian_poses(world_from_place_poses[1], world_from_place_poses[2], 
-        disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
-        sub_graph_sizes['place_retreat'] = len(attach2retreat_place)
+            picknplace_pose_lists = [approach2attach_pick] + [attach2retreat_pick] + \
+                            [approach2attach_place] + [attach2retreat_place]
+            accum_sub_id = 0
+            process_map = {}
+            picknplace_poses = []
+            for sub_id, sub_path in enumerate(picknplace_pose_lists):
+                for pose_id, pose in enumerate(sub_path):
+                    process_map[accum_sub_id + pose_id] = sub_id
+                    picknplace_poses.append(pose)
+                accum_sub_id += len(sub_path)
 
-        picknplace_pose_lists = [approach2attach_pick] + [attach2retreat_pick] + \
-                        [approach2attach_place] + [attach2retreat_place]
-        accum_sub_id = 0
-        process_map = {}
-        picknplace_poses = []
-        for sub_id, sub_path in enumerate(picknplace_pose_lists):
-            for pose_id, pose in enumerate(sub_path):
-                process_map[accum_sub_id + pose_id] = sub_id
-                picknplace_poses.append(pose)
-            accum_sub_id += len(sub_path)
+            if has_gui() and viz:
+                for p_tmp in picknplace_poses:
+                    pose_handle.append(draw_pose(p_tmp, length=0.04))
+                wait_for_user()
 
-        if has_gui() and viz:
-            for p_tmp in picknplace_poses:
-                pose_handle.append(draw_pose(p_tmp, length=0.04))
-            wait_for_user()
-
-        collision_fns = []
-        if mount_link_from_tcp_pose:
-            attach_from_object = multiply(mount_link_from_tcp_pose, invert(grasp.object_from_attach_pb_pose))
-        else:
-            attach_from_object = invert(grasp.object_from_attach_pb_pose)
-
-        temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, attach2retreat_pick[0], get_all=True)
-        if not temp_jt_list:
-            continue
-        set_joint_positions(robot, ik_joints, temp_jt_list[0])
-        for e_body in unit_geo.pybullet_bodies:
-            set_pose(e_body, unit_geo.initial_pb_pose)
-        attachs = [Attachment(robot, tool_link, attach_from_object, e_body) for e_body in unit_geo.pybullet_bodies]
-        if ee_attachs:
-            attachs.extend(ee_attachs)
-
-        ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
-        # appraoch 2 pick 
-        pick_approach_obstacles = static_obstacles + assembled_element_obstacles if pick_from_same_rack \
-            else static_obstacles + assembled_element_obstacles + unassembled_element_obstacles
-
-        collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
-                                              attachments=ee_attachs, self_collisions=self_collisions,
-                                              disabled_collisions=disabled_collision_links,
-                                              custom_limits={}, ignored_pairs=ignored_pairs))
-        # pick 2 retreat 
-        collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
-                                              attachments=ee_attachs + attachs, self_collisions=self_collisions,
-                                              disabled_collisions=disabled_collision_links,
-                                              custom_limits={}))
-        # approach 2 place 
-        collision_fns.append(get_collision_fn(robot, ik_joints, 
-                                              static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
-                                              attachments=ee_attachs + attachs, self_collisions=self_collisions,
-                                              disabled_collisions=disabled_collision_links,
-                                              custom_limits={}))
-        # place 2 retreat 
-        collision_fns.append(get_collision_fn(robot, ik_joints, 
-                                              static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
-                                              attachments=ee_attachs, self_collisions=self_collisions,
-                                              disabled_collisions=disabled_collision_links,
-                                              custom_limits={}, ignored_pairs=ignored_pairs))
-
-        graph = LadderGraph(dof)
-        graph.resize(len(picknplace_poses))
-        is_empty = False
-
-        # solve ik for each pose, build all rungs (w/o edges)
-        for i, pose in enumerate(picknplace_poses):
-            # TODO: special sampler for 6+ extra dofs
-            # sub_id = 0 -> pick, sub_id = 1 -> place
-            sub_id = 0 if process_map[i] < 2 else 1
-
-            jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
-
-            if st_conf:
-                # print('before snap: ', jt_list)
-                joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
-                jt_list = snap_sols(jt_list, st_conf, joint_limits)
-                # print('after snap: ', jt_list)
-
-            if process_map[i] == 3:
-                # the object is in its goal pose in place-retreat phase
-                for e_body in unit_geo.pybullet_bodies:
-                    set_pose(e_body, unit_geo.goal_pb_pose)
-
-            jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
-
-            # jt_list = [jts for jts in jt_list]
-            # if i == 0:
-            #     print('process map: ', process_map[i])
-            #     print(jt_list)
-            #     for conf in jt_list:
-            #         set_joint_positions(robot, ik_joints, conf)
-            #         for ea in ee_attachs: ea.assign()
-            #         wait_for_user()
-
-            if not jt_list or all(not jts for jts in jt_list):
-                print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(unit_geo.name, i, grasp._grasp_id))
-                is_empty = True
-                break
+            collision_fns = []
+            if mount_link_from_tcp_pose:
+                attach_from_object = multiply(mount_link_from_tcp_pose, invert(grasp.object_from_attach_pb_pose))
             else:
-                if has_gui() and viz:
-                    for jt_id, jt in enumerate(jt_list):
-                        set_joint_positions(robot, ik_joints, jt)
-                        for ea in ee_attachs: ea.assign()
-                        print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format(jt_id, unit_geo.name, i, grasp._grasp_id))
-                        wait_for_user()
+                attach_from_object = invert(grasp.object_from_attach_pb_pose)
 
-                # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
-                graph.assign_rung(i, jt_list)
+            temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, attach2retreat_pick[0], get_all=True)
+            if not temp_jt_list:
+                continue
+            set_joint_positions(robot, ik_joints, temp_jt_list[0])
+            for e_body in unit_geo.pybullet_bodies:
+                set_pose(e_body, unit_geo.initial_pb_pose)
+            attachs = [Attachment(robot, tool_link, attach_from_object, e_body) for e_body in unit_geo.pybullet_bodies]
+            if ee_attachs:
+                attachs.extend(ee_attachs)
 
-        if is_empty:
-            # for l in [line for pose in pose_handle for line in pose]:
-            #     remove_debug(l)
-            continue
-        print('Found!!! at brick #{0} grasp id #{1}'.format(unit_geo.name, grasp._grasp_id))
-        # wait_for_user()
+            ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
+            # appraoch 2 pick 
+            pick_approach_obstacles = static_obstacles + assembled_element_obstacles if pick_from_same_rack \
+                else static_obstacles + assembled_element_obstacles + unassembled_element_obstacles
 
-        # build edges
-        for i in range(graph.get_rungs_size()-1):
-            st_id = i
-            end_id = i + 1
-            jt1_list = graph.get_data(st_id)
-            jt2_list = graph.get_data(end_id)
-            st_size = graph.get_rung_vert_size(st_id)
-            end_size = graph.get_rung_vert_size(end_id)
-            edge_builder = EdgeBuilder(st_size, end_size, dof)
+            collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
+                                                  attachments=ee_attachs, self_collisions=self_collisions,
+                                                  disabled_collisions=disabled_collision_links,
+                                                  custom_limits={}, ignored_pairs=ignored_pairs))
+            # pick 2 retreat 
+            collision_fns.append(get_collision_fn(robot, ik_joints, pick_approach_obstacles,
+                                                  attachments=ee_attachs + attachs, self_collisions=self_collisions,
+                                                  disabled_collisions=disabled_collision_links,
+                                                  custom_limits={}))
+            # approach 2 place 
+            collision_fns.append(get_collision_fn(robot, ik_joints, 
+                                                  static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
+                                                  attachments=ee_attachs + attachs, self_collisions=self_collisions,
+                                                  disabled_collisions=disabled_collision_links,
+                                                  custom_limits={}))
+            # place 2 retreat 
+            collision_fns.append(get_collision_fn(robot, ik_joints, 
+                                                  static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
+                                                  attachments=ee_attachs, self_collisions=self_collisions,
+                                                  disabled_collisions=disabled_collision_links,
+                                                  custom_limits={}, ignored_pairs=ignored_pairs))
 
-            for k in range(st_size):
-                st_id = k * dof
-                for j in range(end_size):
-                    end_id = j * dof
-                    edge_builder.consider(jt1_list[st_id : st_id+dof], jt2_list[end_id : end_id+dof], j)
-                edge_builder.next(k)
+            graph = LadderGraph(dof)
+            graph.resize(len(picknplace_poses))
+            is_empty = False
 
-            edges = edge_builder.result
-            if not edge_builder.has_edges and DEBUG:
-                print('no edges!')
+            # solve ik for each pose, build all rungs (w/o edges)
+            for i, pose in enumerate(picknplace_poses):
+                # TODO: special sampler for 6+ extra dofs
+                # sub_id = 0 -> pick, sub_id = 1 -> place
+                sub_id = 0 if process_map[i] < 2 else 1
 
-            graph.assign_edges(i, edges)
+                jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
 
-        if has_gui() and viz: 
-            for l in [line for pose in pose_handle for line in pose]:
-                remove_debug(l)
+                if st_conf:
+                    # print('before snap: ', jt_list)
+                    joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
+                    jt_list = snap_sols(jt_list, st_conf, joint_limits)
+                    # print('after snap: ', jt_list)
 
-        if vertical_graph.size == 0:
-            vertical_graph = graph
-        else:
-            concatenate_graph_vertically(vertical_graph, graph)
-        # end loop grasps
+                if process_map[i] == 3:
+                    # the object is in its goal pose in place-retreat phase
+                    for e_body in unit_geo.pybullet_bodies:
+                        # TODO: symmetric goal pose
+                        set_pose(e_body, unit_geo.goal_pb_pose)
+
+                jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
+
+                # jt_list = [jts for jts in jt_list]
+                # if i == 0:
+                #     print('process map: ', process_map[i])
+                #     print(jt_list)
+                #     for conf in jt_list:
+                #         set_joint_positions(robot, ik_joints, conf)
+                #         for ea in ee_attachs: ea.assign()
+                #         wait_for_user()
+
+                if not jt_list or all(not jts for jts in jt_list):
+                    print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(unit_geo.name, i, grasp._grasp_id))
+                    is_empty = True
+                    break
+                else:
+                    if has_gui() and viz:
+                        for jt_id, jt in enumerate(jt_list):
+                            set_joint_positions(robot, ik_joints, jt)
+                            for ea in ee_attachs: ea.assign()
+                            print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format(jt_id, unit_geo.name, i, grasp._grasp_id))
+                            wait_for_user()
+
+                    # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
+                    graph.assign_rung(i, jt_list)
+
+            if is_empty:
+                # for l in [line for pose in pose_handle for line in pose]:
+                #     remove_debug(l)
+                continue
+            print('Found!!! at brick #{} grasp id #{} - symmetric goal pose #{}'.format(unit_geo.name, grasp._grasp_id, gp_id))
+            # wait_for_user()
+
+            # build edges
+            for i in range(graph.get_rungs_size()-1):
+                st_id = i
+                end_id = i + 1
+                jt1_list = graph.get_data(st_id)
+                jt2_list = graph.get_data(end_id)
+                st_size = graph.get_rung_vert_size(st_id)
+                end_size = graph.get_rung_vert_size(end_id)
+                edge_builder = EdgeBuilder(st_size, end_size, dof)
+
+                for k in range(st_size):
+                    st_id = k * dof
+                    for j in range(end_size):
+                        end_id = j * dof
+                        edge_builder.consider(jt1_list[st_id : st_id+dof], jt2_list[end_id : end_id+dof], j)
+                    edge_builder.next(k)
+
+                edges = edge_builder.result
+                if not edge_builder.has_edges and DEBUG:
+                    print('no edges!')
+
+                graph.assign_edges(i, edges)
+
+            if has_gui() and viz: 
+                for l in [line for pose in pose_handle for line in pose]:
+                    remove_debug(l)
+
+            if vertical_graph.size == 0:
+                vertical_graph = graph
+            else:
+                concatenate_graph_vertically(vertical_graph, graph)
+            # end loop grasps
     return vertical_graph, sub_graph_sizes
 
 
@@ -916,6 +914,7 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
                 input()
 
         for e_body in unit_geo.pybullet_bodies:
+            # TODO: symmetric goal pose
             set_pose(e_body, unit_geo.goal_pb_pose)
 
     unified_graph = LadderGraph(dof)
