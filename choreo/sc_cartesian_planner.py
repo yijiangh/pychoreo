@@ -659,7 +659,6 @@ def direct_ladder_graph_solve(robot, assembly_network, element_seq, seq_poses, o
 def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link_name, ik_fn,
     unit_geo, disc_len, 
     assembled_element_obstacles=[],
-    unassembled_element_obstacles=[],
     static_obstacles=[], self_collisions=True,
     mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
     st_conf=[], disabled_collision_link_names=[]):
@@ -715,10 +714,10 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
             # ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
             # approach 2 place 
             collision_fn = get_collision_fn(robot, ik_joints, 
-                                                  static_obstacles + assembled_element_obstacles + unassembled_element_obstacles,
-                                                  attachments=ee_attachs + attachs, self_collisions=self_collisions,
-                                                  disabled_collisions=disabled_collision_links,
-                                                  custom_limits={})
+                                                   static_obstacles,
+                                                   attachments=ee_attachs + attachs, self_collisions=self_collisions,
+                                                   disabled_collisions=disabled_collision_links,
+                                                   custom_limits={})
 
             # solve ik for each pose, build all rungs (w/o edges)
             for i, pose in enumerate(picknplace_poses):
