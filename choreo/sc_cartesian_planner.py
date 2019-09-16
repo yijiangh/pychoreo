@@ -14,7 +14,8 @@ from choreo.choreo_utils import WAYPOINT_DISC_LEN, interpolate_straight_line_pts
 from choreo.assembly_datastructure import AssemblyNetwork
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
-    wait_for_user, remove_debug, remove_body, has_gui, joints_from_names, link_from_name, matrix_from_quat, get_joint_limits
+    wait_for_user, remove_debug, remove_body, has_gui, joints_from_names, link_from_name, matrix_from_quat, \
+    get_joint_limits, interpolate_poses
 from choreo.extrusion.extrusion_utils import get_disabled_collisions
 
 # this is temporal...
@@ -28,6 +29,7 @@ SELF_COLLISIONS=True
 
 __all__ = [
     'SparseLadderGraph',
+    'quick_check_place_feasibility',
     'direct_ladder_graph_solve_picknplace',
     'divide_list_chunks',
     'divide_nested_list_chunks',
@@ -661,7 +663,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
     assembled_element_obstacles=[],
     static_obstacles=[], self_collisions=True,
     mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
-    st_conf=[], disabled_collision_link_names=[]):
+    st_conf=[], disabled_collision_link_names=[], diagnosis=False):
 
     ik_joints = joints_from_names(robot, ik_joint_names)
     tool_link = link_from_name(robot, ee_link_name)
@@ -669,8 +671,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
          for pair in disabled_collision_link_names]
 
     # generate path pts
-    grasps = unit_geo.grasps
-    for grasp in grasps:
+    for place_grasp, goal_pose in zip(unit_geo.place_grasps, unit_geo.goal_pb_poses):
         pose_handle = [] # visualization handle
 
         def make_assembly_poses(obj_pose, grasp_poses):
@@ -679,76 +680,85 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
         for e_body in unit_geo.pybullet_bodies:
             set_pose(e_body, unit_geo.initial_pb_pose)
 
-        for gp_id, goal_pose in enumerate(unit_geo.goal_pb_poses):
-            grasp_pose_seq = [grasp.object_from_approach_pb_pose, 
-                              grasp.object_from_attach_pb_pose, 
-                              grasp.object_from_retreat_pb_pose]
-            world_from_place_poses = make_assembly_poses(goal_pose, grasp_pose_seq)
+        grasp_pose_seq = [place_grasp.object_from_approach_pb_pose, 
+                          place_grasp.object_from_attach_pb_pose, 
+                          place_grasp.object_from_retreat_pb_pose]
+        world_from_place_poses = make_assembly_poses(goal_pose, grasp_pose_seq)
 
-            approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
-            disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+        # approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
+        # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
+        approach2attach_place = list(interpolate_poses(world_from_place_poses[0], world_from_place_poses[1], \
+            pos_step_size=0.001, ori_step_size=np.pi/180))
+        print('approach2attach: ', approach2attach_place)
 
-            picknplace_poses = [approach2attach_place]
+        if mount_link_from_tcp_pose:
+            approach2attach_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
+                for world_from_tcp in approach2attach_place]
 
-            if has_gui() and viz:
-                for p_tmp in picknplace_poses:
-                    pose_handle.append(draw_pose(p_tmp, length=0.04))
-                wait_for_user()
+        picknplace_poses = approach2attach_place
 
-            if mount_link_from_tcp_pose:
-                attach_from_object = multiply(mount_link_from_tcp_pose, invert(grasp.object_from_attach_pb_pose))
+        if has_gui() and viz:
+            for p_tmp in picknplace_poses:
+                pose_handle.append(draw_pose(p_tmp, length=0.04))
+            wait_for_user()
+
+        if mount_link_from_tcp_pose:
+            attach_from_object = multiply(mount_link_from_tcp_pose, invert(place_grasp.object_from_attach_pb_pose))
+        else:
+            attach_from_object = invert(place_grasp.object_from_attach_pb_pose)
+
+        # generating the element attachment
+        temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, approach2attach_place[-1], get_all=True)
+        if not temp_jt_list:
+            continue
+        set_joint_positions(robot, ik_joints, temp_jt_list[0])
+        for e_body in unit_geo.pybullet_bodies:
+            set_pose(e_body, unit_geo.goal_pb_pose)
+        attachs = [Attachment(robot, tool_link, attach_from_object, e_body) for e_body in unit_geo.pybullet_bodies]
+        if ee_attachs:
+            attachs.extend(ee_attachs)
+
+        # ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
+        # approach 2 place 
+        collision_fn = get_collision_fn(robot, ik_joints, 
+                                        static_obstacles,
+                                        attachments=attachs, self_collisions=self_collisions,
+                                        disabled_collisions=disabled_collision_links,
+                                        diagnosis=diagnosis)
+        is_empty = False
+
+        # solve ik for each pose, build all rungs (w/o edges)
+        for i, pose in enumerate(picknplace_poses):
+            jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
+
+            # if st_conf:
+            #     joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
+            #     jt_list = snap_sols(jt_list, st_conf, joint_limits)
+
+            jt_list = [jts for jts in jt_list if jts and not collision_fn(jts)]
+
+            if not jt_list or all(not jts for jts in jt_list):
+                print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format( \
+                    unit_geo.name, i, place_grasp._grasp_id))
+                is_empty = True
+                break
             else:
-                attach_from_object = invert(grasp.object_from_attach_pb_pose)
+                if has_gui() and viz:
+                    for jt_id, jt in enumerate(jt_list):
+                        set_joint_positions(robot, ik_joints, jt)
+                        for at in attachs: at.assign()
+                        print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format( \
+                            jt_id, unit_geo.name, i, place_grasp._grasp_id))
+                        wait_for_user()
+            
+            if has_gui() and viz: 
+                for l in [line for pose in pose_handle for line in pose]:
+                    remove_debug(l)
 
-            # generating the element attachment
-            temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, approach2attach_place[-1], get_all=True)
-            if not temp_jt_list:
-                continue
-            set_joint_positions(robot, ik_joints, temp_jt_list[0])
-            for e_body in unit_geo.pybullet_bodies:
-                set_pose(e_body, unit_geo.goal_pb_pose)
-            attachs = [Attachment(robot, tool_link, attach_from_object, e_body) for e_body in unit_geo.pybullet_bodies]
-            if ee_attachs:
-                attachs.extend(ee_attachs)
-
-            # ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
-            # approach 2 place 
-            collision_fn = get_collision_fn(robot, ik_joints, 
-                                                   static_obstacles,
-                                                   attachments=ee_attachs + attachs, self_collisions=self_collisions,
-                                                   disabled_collisions=disabled_collision_links,
-                                                   custom_limits={})
-
-            # solve ik for each pose, build all rungs (w/o edges)
-            for i, pose in enumerate(picknplace_poses):
-                jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
-
-                # if st_conf:
-                #     joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
-                #     jt_list = snap_sols(jt_list, st_conf, joint_limits)
-
-                jt_list = [jts for jts in jt_list if jts and not collision_fn(jts)]
-
-                if not jt_list or all(not jts for jts in jt_list):
-                    print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(unit_geo.name, i, grasp._grasp_id))
-                    is_empty = True
-                    break
-                else:
-                    if has_gui() and viz:
-                        for jt_id, jt in enumerate(jt_list):
-                            set_joint_positions(robot, ik_joints, jt)
-                            for ea in ee_attachs: ea.assign()
-                            print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format(jt_id, unit_geo.name, i, grasp._grasp_id))
-                            wait_for_user()
-                
-                if has_gui() and viz: 
-                    for l in [line for pose in pose_handle for line in pose]:
-                        remove_debug(l)
-
-            if is_empty:
-                continue
-            else:
-                return True
+        if is_empty:
+            continue
+        else:
+            return True
     return False
 
 

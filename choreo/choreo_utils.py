@@ -175,8 +175,8 @@ def draw_collision_diagnosis(pybullet_output, paint_all_others=False):
         return
     if paint_all_others:
         set_all_bodies_color()
-        for b in obstacles:
-            set_color(b, (0,0,1,0.3))
+        # for b in obstacles:
+        #     set_color(b, (0,0,1,0.3))
     for u_cr in pybullet_output:
         handles = []
         b1 = get_body_from_pb_id(u_cr[1])
@@ -196,12 +196,16 @@ def draw_collision_diagnosis(pybullet_output, paint_all_others=False):
         handles.append(draw_link_name(b2, l2))
 
         handles.append(add_line(u_cr[5], u_cr[6], color=(0,0,1), width=5))
-        camera_base_pt = u_cr[5]
-        camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
-        set_camera_pose(tuple(camera_pt), camera_base_pt)
+        # camera_base_pt = u_cr[5]
+        # camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
+        # set_camera_pose(tuple(camera_pt), camera_base_pt)
 
         wait_for_user()
+
+        # restore lines and colors
         for h in handles: remove_debug(h)
+        set_color(b1, (1, 1, 1, 1))
+        set_color(b2, (1, 1, 1, 1))
 
 
 def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=True, disabled_collisions=set(),
