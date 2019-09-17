@@ -346,6 +346,16 @@ def check_exist_valid_kinematics(assembly_network, e_id, robot, cmap, collision_
         if time.time() - st_time > KINEMATICS_CHECK_TIMEOUT:
             return False
 
+def interpolate_poses_by_num(pose1, pose2, num_steps=10):
+    pos1, quat1 = pose1
+    pos2, quat2 = pose2
+    for i in range(num_steps):
+        fraction = float(i) / num_steps
+        pos = (1-fraction)*np.array(pos1) + fraction*np.array(pos2)
+        quat = p.getQuaternionSlerp(quat1, quat2, interpolationFraction=fraction)
+        #quat = quaternion_slerp(quat1, quat2, fraction=fraction)
+        yield (pos, quat)
+    yield pose2
 
 def interpolate_straight_line_pts(p1, p2, disc_len):
     p1 = np.array(p1)
