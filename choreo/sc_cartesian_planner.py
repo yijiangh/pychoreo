@@ -764,7 +764,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
 
 
 def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, ee_link_name, ik_fn,
-    unit_geo, disc_len, 
+    unit_geo, 
     assembled_element_obstacles=[], unassembled_element_obstacles=[], 
     static_obstacles=[], self_collisions=True,
     pick_from_same_rack=False, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
@@ -854,7 +854,10 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             accum_sub_id += len(sub_path)
 
         if has_gui() and viz:
-            for p_tmp in picknplace_poses:
+            if mount_link_from_tcp_pose:
+                picknplace_tcp_viz = [multiply(world_from_mount, mount_link_from_tcp_pose) \
+                    for world_from_mount in picknplace_poses]
+            for p_tmp in picknplace_tcp_viz:
                 pose_handle.append(draw_pose(p_tmp, length=0.04))
             wait_for_user()
 
@@ -934,7 +937,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                 is_empty = True
                 break
             else:
-                if has_gui() and viz:
+                if has_gui() and viz and process_map[i] >= 2:
+                    # only viz placing
                     for jt_id, jt in enumerate(jt_list):
                         set_joint_positions(robot, ik_joints, jt)
                         for ea in ee_attachs: ea.assign()
@@ -992,7 +996,7 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
         unit_geo_dict, element_seq, obstacle_from_name, 
         from_seq_id=0, to_seq_id=None,
         disabled_collision_link_names=[], self_collisions=True, pick_from_same_rack=False,
-        tcp_transf=None, ee_attachs=[], max_attempts=2, viz=False, st_conf=None):
+        tcp_transf=None, ee_attachs=[], max_attempts=1, viz=False, st_conf=None):
     dof = len(get_movable_joints(robot))
     graph_list = []
     static_obstacles = list(obstacle_from_name.values())
@@ -1027,7 +1031,7 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
         for run_iter in range(max_attempts):
             graph, sub_graph_sizes = \
             generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
-                unit_geo, WAYPOINT_DISC_LEN, 
+                unit_geo,
                 pick_from_same_rack=pick_from_same_rack,
                 static_obstacles=static_obstacles, 
                 assembled_element_obstacles=assembled_elements, 
