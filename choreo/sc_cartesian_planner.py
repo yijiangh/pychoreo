@@ -990,6 +990,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
 
 def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
         unit_geo_dict, element_seq, obstacle_from_name, 
+        from_seq_id=0, to_seq_id=None,
         disabled_collision_link_names=[], self_collisions=True, pick_from_same_rack=False,
         tcp_transf=None, ee_attachs=[], max_attempts=2, viz=False, st_conf=None):
     dof = len(get_movable_joints(robot))
@@ -1007,23 +1008,33 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
         for g_body in unit_geo.pybullet_bodies:
             set_pose(g_body, unit_geo.initial_pb_pose)
 
+    to_seq_id = to_seq_id or len(element_seq)-1
+    assert 0 <= from_seq_id and from_seq_id < len(element_seq)
+    assert from_seq_id <= to_seq_id and to_seq_id < len(element_seq)
+
+    for seq_id in range(0, from_seq_id):
+        e_id = element_seq[seq_id]
+        for e_body in unit_geo_dict[e_id].pybullet_bodies:
+            set_pose(e_body, unit_geo_dict[e_id].goal_pb_pose)
+
     graph_sizes = []
-    for seq_id, e_id in element_seq.items():
+    for seq_id in range(from_seq_id, to_seq_id + 1):
+        e_id = element_seq[seq_id]
         unit_geo = unit_geo_dict[e_id]
         solved = False
         assembled_elements = flatten_unit_geos_bodies({element_seq[i] : unit_geo_dict[element_seq[i]] for i in range(0, seq_id)})
-        unassembled_elements = flatten_unit_geos_bodies({element_seq[i] : unit_geo_dict[element_seq[i]] for i in range(seq_id+1, len(element_seq))})
+        unassembled_elements = flatten_unit_geos_bodies({element_seq[i] : unit_geo_dict[element_seq[i]] for i in range(seq_id+1, to_seq_id+1)})
         for run_iter in range(max_attempts):
             graph, sub_graph_sizes = \
             generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, tool_link_name, ik_fn,
-            unit_geo, WAYPOINT_DISC_LEN, 
-            pick_from_same_rack=pick_from_same_rack,
-            static_obstacles=static_obstacles, 
-            assembled_element_obstacles=assembled_elements, 
-            unassembled_element_obstacles=unassembled_elements, 
-            self_collisions=self_collisions,
-            disabled_collision_link_names=disabled_collision_link_names,
-            ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, viz=viz, st_conf=st_conf)
+                unit_geo, WAYPOINT_DISC_LEN, 
+                pick_from_same_rack=pick_from_same_rack,
+                static_obstacles=static_obstacles, 
+                assembled_element_obstacles=assembled_elements, 
+                unassembled_element_obstacles=unassembled_elements, 
+                self_collisions=self_collisions,
+                disabled_collision_link_names=disabled_collision_link_names,
+                ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, viz=viz, st_conf=st_conf)
 
             if graph.size > 0:
                 graph_list.append(graph)
@@ -1045,24 +1056,12 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
             set_pose(e_body, unit_geo.goal_pb_pose)
 
     unified_graph = LadderGraph(dof)
-
-    # if st_conf:
-    #     assert len(st_conf) == dof
-    #     # TODO: check if st_conf in joint limits
-    #     st_graph = LadderGraph(dof)
-    #     st_graph.resize(1)
-    #     st_graph.assign_rung(0, [st_conf])
-    #     unified_graph = append_ladder_graph(unified_graph, st_graph)
-
     for g in graph_list:
         unified_graph = append_ladder_graph(unified_graph, g)
 
     dag_search = DAGSearch(unified_graph)
     dag_search.run()
     tot_traj = dag_search.shortest_path()
-
-    # if st_conf:
-    #     tot_traj.pop(0)
 
     return tot_traj, graph_sizes
 
