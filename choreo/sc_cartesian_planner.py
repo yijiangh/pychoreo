@@ -690,12 +690,17 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
         # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         approach2attach_place_tcp = list(interpolate_poses_by_num(world_from_place_poses[0], world_from_place_poses[1], \
             num_steps=num_cart_steps))
-
         if mount_link_from_tcp_pose:
             approach2attach_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in approach2attach_place_tcp]
 
-        picknplace_poses = approach2attach_place
+        attach2retreat_place = list(interpolate_poses_by_num(world_from_place_poses[1], world_from_place_poses[2], \
+            num_steps=num_cart_steps))
+        if mount_link_from_tcp_pose:
+            attach2retreat_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
+                for world_from_tcp in attach2retreat_place]
+
+        picknplace_poses = approach2attach_place + attach2retreat_place
 
         if has_gui() and viz:
             pose_handle.append(draw_pose(goal_pose, length=0.04))
@@ -719,24 +724,33 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
         if ee_attachs:
             attachs.extend(ee_attachs)
 
-        # ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
         # approach 2 place 
-        collision_fn = get_collision_fn(robot, ik_joints, 
+        collision_fn_approach_place = get_collision_fn(robot, ik_joints, 
                                         static_obstacles,
                                         attachments=attachs, self_collisions=self_collisions,
                                         disabled_collisions=disabled_collision_links,
                                         diagnosis=diagnosis)
+
+        ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
+        # place 2 retreat 
+        collision_fn_retreat_place = get_collision_fn(robot, ik_joints, 
+                                        static_obstacles,
+                                        attachments=ee_attachs, self_collisions=self_collisions,
+                                        disabled_collisions=disabled_collision_links,
+                                        custom_limits={}, ignored_pairs=ignored_pairs)
+
         is_empty = False
 
         # solve ik for each pose, build all rungs (w/o edges)
+        print(len(picknplace_poses))
+        assert len(picknplace_poses) == 2*(num_cart_steps + 1)
         for i, pose in enumerate(picknplace_poses):
             jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, pose, get_all=True)
 
-            # if st_conf:
-            #     joint_limits = [get_joint_limits(robot, pb_joint) for pb_joint in ik_joints]
-            #     jt_list = snap_sols(jt_list, st_conf, joint_limits)
-
-            jt_list = [jts for jts in jt_list if jts and not collision_fn(jts)]
+            if i < num_cart_steps + 1:
+                jt_list = [jts for jts in jt_list if jts and not collision_fn_approach_place(jts)]
+            else:
+                jt_list = [jts for jts in jt_list if jts and not collision_fn_retreat_place(jts)]
 
             if not jt_list or all(not jts for jts in jt_list):
                 print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format( \
@@ -747,7 +761,8 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
                 if has_gui() and viz:
                     for jt_id, jt in enumerate(jt_list):
                         set_joint_positions(robot, ik_joints, jt)
-                        for at in attachs: at.assign()
+                        if i < num_cart_steps + 1:
+                            for at in attachs: at.assign()
                         print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format( \
                             jt_id, unit_geo.name, i, place_grasp._grasp_id))
                         wait_for_user()
@@ -765,6 +780,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
 
 def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, base_link_name, ee_link_name, ik_fn,
     unit_geo, 
+    num_cart_steps=10,
     assembled_element_obstacles=[], unassembled_element_obstacles=[], 
     static_obstacles=[], self_collisions=True,
     pick_from_same_rack=False, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
@@ -809,7 +825,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
         # approach2attach_pick = interpolate_cartesian_poses(world_from_pick_poses[0], world_from_pick_poses[1], 
         # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         approach2attach_pick = list(interpolate_poses_by_num(world_from_pick_poses[0], world_from_pick_poses[1], \
-            num_steps=10))
+            num_steps=num_cart_steps))
         if mount_link_from_tcp_pose:
             approach2attach_pick = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in approach2attach_pick]
@@ -818,7 +834,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
         # attach2retreat_pick = interpolate_cartesian_poses(world_from_pick_poses[1], world_from_pick_poses[2], 
         # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         attach2retreat_pick = list(interpolate_poses_by_num(world_from_pick_poses[1], world_from_pick_poses[2], \
-            num_steps=10))
+            num_steps=num_cart_steps))
         if mount_link_from_tcp_pose:
             attach2retreat_pick = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in attach2retreat_pick]
@@ -827,7 +843,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
         # approach2attach_place = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
         # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         approach2attach_place = list(interpolate_poses_by_num(world_from_place_poses[0], world_from_place_poses[1], \
-            num_steps=10))
+            num_steps=num_cart_steps))
         if mount_link_from_tcp_pose:
             approach2attach_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in approach2attach_place]
@@ -836,7 +852,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
         # attach2retreat_place = interpolate_cartesian_poses(world_from_place_poses[1], world_from_place_poses[2], 
         #     disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         attach2retreat_place = list(interpolate_poses_by_num(world_from_place_poses[1], world_from_place_poses[2], \
-            num_steps=10))
+            num_steps=num_cart_steps))
         if mount_link_from_tcp_pose:
             attach2retreat_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in attach2retreat_place]
