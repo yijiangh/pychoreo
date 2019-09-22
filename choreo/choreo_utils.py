@@ -14,7 +14,7 @@ from conrob_pybullet.ss_pybullet.pybullet_tools.utils import add_line, Euler, \
     tform_point, matrix_from_quat, MAX_DISTANCE, set_color, wait_for_user, set_camera_pose, \
     add_body_name, get_name, euler_from_quat, add_fixed_constraint, get_sample_fn, get_extend_fn, \
     get_distance_fn, get_joint_positions, check_initial_end, get_moving_links, get_links, get_moving_pairs, are_links_adjacent, \
-    link_pairs_collision, draw_link_name, get_link_name, get_all_links, remove_debug, get_distance, has_gui
+    link_pairs_collision, draw_link_name, get_link_name, get_all_links, remove_debug, get_distance, has_gui, wait_for_duration
 # from .assembly_csp import AssemblyCSP
 
 from conrob_pybullet.ss_pybullet.motion.motion_planners.rrt_connect import birrt
@@ -170,7 +170,7 @@ def get_link_attached_body_pairs(body, attachments=[]):
     return link_body_pairs
 
 
-def draw_collision_diagnosis(pybullet_output, paint_all_others=False):
+def draw_collision_diagnosis(pybullet_output, paint_all_others=False, viz_last_duration=-1):
     if not has_gui() and pybullet_output:
         return
     if paint_all_others:
@@ -200,7 +200,10 @@ def draw_collision_diagnosis(pybullet_output, paint_all_others=False):
         # camera_pt = np.array(camera_base_pt) + np.array([0.1, 0, 0.05])
         # set_camera_pose(tuple(camera_pt), camera_base_pt)
 
-        wait_for_user()
+        if viz_last_duration < 0:
+            wait_for_user()
+        else:
+            wait_for_duration(viz_last_duration)
 
         # restore lines and colors
         for h in handles: remove_debug(h)
@@ -209,7 +212,7 @@ def draw_collision_diagnosis(pybullet_output, paint_all_others=False):
 
 
 def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=True, disabled_collisions=set(),
-                     custom_limits={}, ignored_pairs=[], diagnosis=False, **kwargs):
+                     custom_limits={}, ignored_pairs=[], diagnosis=False, viz_last_duration=-1, **kwargs):
     """copy from pybullet.utils to allow dynmic collision objects"""
     # TODO: convert most of these to keyword arguments
     check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions=disabled_collisions, 
@@ -253,7 +256,7 @@ def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=Tr
                 if diagnosis:
                     print('body link-link collision!')
                     cr = pairwise_link_collision_diagnosis(body, link1, body, link2)
-                    draw_collision_diagnosis(cr)
+                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
 
                 return True
 
@@ -263,7 +266,7 @@ def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=Tr
                 if diagnosis:
                     print('body - attachment collision!')
                     cr = link_pairs_collision_diagnosis(body, body_links, at_body)
-                    draw_collision_diagnosis(cr)
+                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
                 return True
 
         # body - body collision
@@ -272,7 +275,7 @@ def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=Tr
                 print('body - body collision!')
                 for pair in check_body_pairs:
                     cr = pairwise_collision_diagnosis(*pair, **kwargs)
-                    draw_collision_diagnosis(cr)
+                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
             return True
         else:
             return False

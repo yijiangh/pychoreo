@@ -16,7 +16,7 @@ from choreo.assembly_datastructure import AssemblyNetwork
 from conrob_pybullet.ss_pybullet.pybullet_tools.utils import Pose, \
     get_movable_joints, multiply, Attachment, set_pose, invert, draw_pose, wait_for_interrupt, set_joint_positions, \
     wait_for_user, remove_debug, remove_body, has_gui, joints_from_names, link_from_name, matrix_from_quat, \
-    get_joint_limits, interpolate_poses
+    get_joint_limits, interpolate_poses, wait_for_duration
 from choreo.extrusion.extrusion_utils import get_disabled_collisions
 
 # this is temporal...
@@ -664,7 +664,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
     num_cart_steps=10,
     static_obstacles=[], self_collisions=True,
     mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
-    st_conf=[], disabled_collision_link_names=[], diagnosis=False):
+    st_conf=[], disabled_collision_link_names=[], diagnosis=False, viz_time_gap=1, draw_pose_size=0.02):
 
     ik_joints = joints_from_names(robot, ik_joint_names)
     tool_link = link_from_name(robot, ee_link_name)
@@ -686,27 +686,29 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
                           place_grasp.object_from_retreat_pb_pose]
         world_from_place_poses = make_assembly_poses(goal_pose, grasp_pose_seq)
             
+        # pose_handle.append(draw_pose(goal_pose, length=draw_pose_size))
+
         # approach2attach_place_old = interpolate_cartesian_poses(world_from_place_poses[0], world_from_place_poses[1], 
         # disc_len, mount_link_from_tcp=mount_link_from_tcp_pose)
         approach2attach_place_tcp = list(interpolate_poses_by_num(world_from_place_poses[0], world_from_place_poses[1], \
             num_steps=num_cart_steps))
+        if has_gui() and viz:
+            for p_tmp in approach2attach_place_tcp:
+                pose_handle.append(draw_pose(p_tmp, length=draw_pose_size))
         if mount_link_from_tcp_pose:
             approach2attach_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in approach2attach_place_tcp]
 
         attach2retreat_place = list(interpolate_poses_by_num(world_from_place_poses[1], world_from_place_poses[2], \
             num_steps=num_cart_steps))
+        if has_gui() and viz:
+            for p_tmp in attach2retreat_place:
+                pose_handle.append(draw_pose(p_tmp, length=draw_pose_size))
         if mount_link_from_tcp_pose:
             attach2retreat_place = [multiply(world_from_tcp, invert(mount_link_from_tcp_pose)) \
                 for world_from_tcp in attach2retreat_place]
 
         picknplace_poses = approach2attach_place + attach2retreat_place
-
-        if has_gui() and viz:
-            pose_handle.append(draw_pose(goal_pose, length=0.04))
-            for p_tmp in picknplace_poses:
-                pose_handle.append(draw_pose(p_tmp, length=0.04))
-            wait_for_user()
 
         if mount_link_from_tcp_pose:
             attach_from_object = multiply(mount_link_from_tcp_pose, invert(place_grasp.object_from_attach_pb_pose))
@@ -716,6 +718,9 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
         # generating the element attachment
         temp_jt_list = sample_tool_ik(ik_fn, robot, ik_joint_names, base_link_name, approach2attach_place[-1], get_all=True)
         if not temp_jt_list:
+            if has_gui() and viz: 
+                for l in [line for pose in pose_handle for line in pose]:
+                    remove_debug(l)
             continue
         set_joint_positions(robot, ik_joints, temp_jt_list[0])
         for e_body in unit_geo.pybullet_bodies:
@@ -729,7 +734,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
                                         static_obstacles,
                                         attachments=attachs, self_collisions=self_collisions,
                                         disabled_collisions=disabled_collision_links,
-                                        diagnosis=diagnosis)
+                                        diagnosis=diagnosis, viz_last_duration=viz_time_gap)
 
         ignored_pairs = list(product([ee_attach.child for ee_attach in ee_attachs], unit_geo.pybullet_bodies))
         # place 2 retreat 
@@ -737,7 +742,7 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
                                         static_obstacles,
                                         attachments=ee_attachs, self_collisions=self_collisions,
                                         disabled_collisions=disabled_collision_links,
-                                        custom_limits={}, ignored_pairs=ignored_pairs)
+                                        custom_limits={}, ignored_pairs=ignored_pairs, viz_last_duration=viz_time_gap)
 
         is_empty = False
 
@@ -759,17 +764,19 @@ def quick_check_place_feasibility(robot, ik_joint_names, base_link_name, ee_link
                 break
             else:
                 if has_gui() and viz:
-                    for jt_id, jt in enumerate(jt_list):
-                        set_joint_positions(robot, ik_joints, jt)
-                        if i < num_cart_steps + 1:
-                            for at in attachs: at.assign()
-                        print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format( \
-                            jt_id, unit_geo.name, i, place_grasp._grasp_id))
-                        wait_for_user()
+                    # for jt_id, jt in enumerate(jt_list):
+                    jt = jt_list[0]
+                    set_joint_positions(robot, ik_joints, jt)
+                    if i < num_cart_steps + 1:
+                        for at in attachs: at.assign()
+                        # print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format( \
+                        #     jt_id, unit_geo.name, i, place_grasp._grasp_id))
+                    wait_for_duration(viz_time_gap)
             
-            if has_gui() and viz: 
-                for l in [line for pose in pose_handle for line in pose]:
-                    remove_debug(l)
+        if has_gui() and viz: 
+            wait_for_duration(2)
+            for l in [line for pose in pose_handle for line in pose]:
+                remove_debug(l)
 
         if is_empty:
             continue
@@ -784,7 +791,7 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
     assembled_element_obstacles=[], unassembled_element_obstacles=[], 
     static_obstacles=[], self_collisions=True,
     pick_from_same_rack=False, mount_link_from_tcp_pose=None, ee_attachs=[], viz=False, 
-    st_conf=[], disabled_collision_link_names=[]):
+    st_conf=[], disabled_collision_link_names=[], verbose=False):
 
     """ unit_geo : compas_fab.assembly.datastructures.UnitGeometry"""
     # TODO: lazy collision check
@@ -874,8 +881,11 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                 picknplace_tcp_viz = [multiply(world_from_mount, mount_link_from_tcp_pose) \
                     for world_from_mount in picknplace_poses]
             for p_tmp in picknplace_tcp_viz:
-                pose_handle.append(draw_pose(p_tmp, length=0.04))
-            wait_for_user()
+                pose_handle.append(draw_pose(p_tmp, length=0.02))
+            try:
+                wait_for_user()
+            except:
+                wait_for_duration(2)
 
         collision_fns = []
         if mount_link_from_tcp_pose:
@@ -948,8 +958,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             jt_list = [jts for jts in jt_list if jts and not collision_fns[process_map[i]](jts)]
 
             if not jt_list or all(not jts for jts in jt_list):
-                print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(\
-                    unit_geo.name, i, g_id))
+                if verbose: print('no joint solution found at brick #{0} path pt #{1} grasp id #{2}'.format(\
+                                unit_geo.name, i, g_id))
                 is_empty = True
                 break
             else:
@@ -960,7 +970,10 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                         for ea in ee_attachs: ea.assign()
                         print('-- ik sol found #{} at element #{} path pt #{} grasp id #{}'.format(
                             jt_id, unit_geo.name, i, g_id))
-                        wait_for_user()
+                        try:
+                            wait_for_user()
+                        except:
+                            wait_for_duration(1)
 
                 # print('rung #{0} at brick #{1} grasp id #{2}'.format(i, brick.index, grasp.num))
                 graph.assign_rung(i, jt_list)
@@ -973,9 +986,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
             # for l in [line for pose in pose_handle for line in pose]:
             #     remove_debug(l)
             continue
-        print('Found!!! at brick #{} grasp id #{}'.format( \
-            unit_geo.name, g_id))
-        # wait_for_user()
+        if verbose: print('Found!!! at brick #{} grasp id #{}'.format( \
+                        unit_geo.name, g_id))
 
         # build edges
         for i in range(graph.get_rungs_size()-1):
@@ -995,8 +1007,8 @@ def generate_ladder_graph_for_picknplace_single_brick(robot, ik_joint_names, bas
                 edge_builder.next(k)
 
             edges = edge_builder.result
-            if not edge_builder.has_edges and DEBUG:
-                print('no edges!')
+            # if not edge_builder.has_edges and DEBUG:
+            #     print('no edges!')
 
             graph.assign_edges(i, edges)
 
@@ -1066,10 +1078,11 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
 
         if not solved:
             print('NOT SOLVED! seq #{}, brick#{} after {} attempts'.format(seq_id, e_id, max_attempts))
-            if has_gui():
-                wait_for_user()
-            else:
-                input()
+            assert False, 'NOT SOLVED! seq #{}, brick#{} after {} attempts'.format(seq_id, e_id, max_attempts)
+            # if has_gui():
+            #     wait_for_user()
+            # else:
+            #     input()
 
         for e_body in unit_geo.pybullet_bodies:
             # TODO: symmetric goal pose
