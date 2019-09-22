@@ -1024,7 +1024,7 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
         unit_geo_dict, element_seq, obstacle_from_name, 
         from_seq_id=0, to_seq_id=None,
         disabled_collision_link_names=[], self_collisions=True, pick_from_same_rack=False,
-        tcp_transf=None, ee_attachs=[], max_attempts=1, viz=False, st_conf=None):
+        tcp_transf=None, ee_attachs=[], max_attempts=1, viz=False, st_conf=None, num_cart_steps=10):
     dof = len(get_movable_joints(robot))
     graph_list = []
     static_obstacles = list(obstacle_from_name.values())
@@ -1065,6 +1065,7 @@ def direct_ladder_graph_solve_picknplace(robot, ik_joint_names, base_link_name, 
                 assembled_element_obstacles=assembled_elements, 
                 unassembled_element_obstacles=unassembled_elements, 
                 self_collisions=self_collisions,
+                num_cart_steps=num_cart_steps,
                 disabled_collision_link_names=disabled_collision_link_names,
                 ee_attachs=ee_attachs, mount_link_from_tcp_pose=tcp_transf, viz=viz, st_conf=st_conf)
 
