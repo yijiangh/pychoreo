@@ -35,45 +35,6 @@ PHI_DISC = 20
 WAYPOINT_DISC_LEN = 0.01 # meter
 KINEMATICS_CHECK_TIMEOUT = 2
 
-
-class MotionTrajectory(object):
-    def __init__(self, robot, joints, path, attachments=[]):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
-        self.attachments = attachments
-    def reverse(self):
-        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
-    def iterate(self):
-        for conf in self.path[1:]:
-            set_joint_positions(self.robot, self.joints, conf)
-            yield
-    def __repr__(self):
-        return 'm({},{})'.format(len(self.joints), len(self.path))
-
-class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, element, reverse, colliding=set()):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
-        self.n1, self.n2 = reversed(element) if reverse else element
-        self.element = element
-        self.colliding = colliding
-    def __repr__(self):
-        return '{}->{}'.format(self.n1, self.n2)
-
-###########################################
-
-def add_text(text, position=(0, 0, 0), color=(0, 0, 0), lifetime=None, parent=-1, parent_link=BASE_LINK, text_size=1):
-    """a copy from pybullet.util to enable text size"""
-    return p.addUserDebugText(str(text), textPosition=position, textColorRGB=color, textSize=text_size,
-                              lifeTime=0, parentObjectUniqueId=parent, parentLinkIndex=parent_link,
-                              physicsClientId=CLIENT)
-
-def draw_link_name(body, link):
-    link_pt = get_link_pose(body, link)[0]
-    return add_text(get_link_name(body, link), position=(link_pt[0], link_pt[1], link_pt[2] + 0.1), parent=body, parent_link=link)
-
 def draw_element(node_points, element, color=(1, 0, 0)):
     n1, n2 = element.node_ids
     p1 = node_points[n1]
@@ -91,7 +52,7 @@ def draw_model(assembly_network, draw_tags=False):
         handles.append(add_line(p1, p2, color=tuple(color)))
         if draw_tags:
             e_mid = (np.array(p1) + np.array(p2)) / 2
-            handles.append(add_text('g_dist=' + str(element.to_ground_dist), position=e_mid, text_size=1))
+            handles.append(add_text('g_dist=' + str(element.to_ground_dist), position=e_mid))
 
     return handles
 
@@ -141,8 +102,8 @@ def cmap_id2angle(id, return_direction_vector=False):
 def sample_ee_yaw():
     return random.uniform(-np.pi, np.pi)
 
-def get_self_link_pairs(body, joints, disabled_collisions=set(), only_moving=True, attachments=[]):
-    moving_links = get_moving_links(body, joints) 
+def get_self_link_pairs(body, joints, disabled_collisions=set(), only_moving=True):
+    moving_links = get_moving_links(body, joints)
     fixed_links = list(set(get_links(body)) - set(moving_links))
     check_link_pairs = list(product(moving_links, fixed_links))
     if only_moving:
@@ -153,7 +114,6 @@ def get_self_link_pairs(body, joints, disabled_collisions=set(), only_moving=Tru
     check_link_pairs = list(filter(lambda pair: (pair not in disabled_collisions) and
                                                 (pair[::-1] not in disabled_collisions), check_link_pairs))
     return check_link_pairs
-
 
 def get_link_attached_body_pairs(body, attachments=[]):
     link_body_pairs = []
@@ -215,8 +175,7 @@ def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=Tr
                      custom_limits={}, ignored_pairs=[], diagnosis=False, viz_last_duration=-1, **kwargs):
     """copy from pybullet.utils to allow dynmic collision objects"""
     # TODO: convert most of these to keyword arguments
-    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions=disabled_collisions, 
-        attachments=attachments) if self_collisions else []
+    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions=disabled_collisions) if self_collisions else []
     check_link_attach_body_pairs = get_link_attached_body_pairs(body, attachments)
 
     moving_bodies = [body] + [attachment.child for attachment in attachments]

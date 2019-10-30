@@ -9,7 +9,7 @@ from webbrowser import open_new_tab
 
 import pybullet as p
 
-from conrob_pybullet.ss_pybullet.pybullet_tools.utils import connect, disconnect, wait_for_user, LockRenderer, \
+from pybullet_planning import connect, disconnect, wait_for_user, LockRenderer, \
     has_gui, remove_body, set_camera_pose, get_movable_joints, set_joint_positions, \
     wait_for_duration, point_from_pose, get_link_pose, link_from_name, add_line, \
     plan_joint_motion, get_joint_positions, remove_all_debug, get_name
@@ -18,7 +18,7 @@ from choreo.extrusion.extrusion_utils import create_elements, \
     load_extrusion, load_world, get_disabled_collisions
 from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import TOOL_FRAME
 
-from pyconmech import stiffness_checker
+from pyconmech import StiffnessChecker
 
 from choreo.assembly_datastructure import AssemblyNetwork
 from choreo.csp import backtracking_search
@@ -303,12 +303,14 @@ def main(precompute=False):
             else:
                 set_joint_positions(robot, movable_joints, initial_conf)
 
-            transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
+            transition_traj = plan_joint_motion(robot, movable_joints, process_trajs[seq_id]['print'][0], \
+                obstacles=static_obstacles + list(moving_obstacles.values()), self_collisions=SELF_COLLISIONS)
 
             if not transition_traj:
                 add_line(*assembly_network.get_end_points(e_id))
 
-                cfn = get_collision_fn_diagnosis(robot, movable_joints, obstacles=static_obstacles + list(moving_obstacles.values()), attachments=[], self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions)
+                cfn = get_collision_fn_diagnosis(robot, movable_joints, obstacles=static_obstacles + list(moving_obstacles.values()), \
+                    attachments=[], self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions)
 
                 st_conf = get_joint_positions(robot, movable_joints)
                 print('start extrusion pose:')
