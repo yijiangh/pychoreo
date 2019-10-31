@@ -1,32 +1,17 @@
-# choreo
-graft choreo
-prune choreo/convex_decomp
-prune choreo/picknplace
-exclude choreo/extrusion/run.py
-exclude choreo/deformed_frame_viz.py
-
-# pybullet utils
-recursive-include conrob_pybullet/ss_pybullet/pybullet_tools *.py
-recursive-include conrob_pybullet/ss_pybullet/motion *.py
-recursive-include conrob_pybullet/utils *.py
-# prune conrob_pybullet/ss_pybullet/pybullet_tools/ikfast
-
-include LICENSE
-include README.md
-# include AUTHORS.md
-include CHANGELOG.md
-include requirements.txt
+graft src
 
 prune .github
-prune assembly_instances
 prune docs
 prune tests
-prune choreo/results
-prune choreo/csp_log
 
+include AUTHORS.rst
+include CHANGELOG.rst
+include LICENSE
+include README.md
+
+include requirements.txt
 exclude requirements-dev.txt
 exclude pytest.ini .bumpversion.cfg .editorconfig
 exclude tasks.py
-exclude CODE_OF_CONDUCT.md CONTRIBUTING.md
 
 global-exclude *.py[cod] __pycache__ *.dylib *.nb[ic] .DS_Store
