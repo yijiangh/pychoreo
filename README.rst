@@ -79,8 +79,8 @@ Related repos
 ---------------
 
 Task and Motion Planning
-- https://github.com/caelan/pb-construction
-- https://github.com/caelan/pddlstream
+    - https://github.com/caelan/pb-construction
+    - https://github.com/caelan/pddlstream
 
 Computational design and digital fabrication
-- https://github.com/compas-dev/compas_fab
+    - https://github.com/compas-dev/compas_fab

@@ -232,46 +232,36 @@ def main(precompute=False):
     assembly_network = AssemblyNetwork(node_points, elements, ground_nodes)
     assembly_network.compute_traversal_to_ground_dist()
 
-    sc = stiffness_checker(json_file_path=file_path, verbose=False)
-    # sc.set_self_weight_load(True)
-    print('test stiffness check on the whole structure: {0}'.format(sc.solve()))
+    # sc = stiffness_checker(json_file_path=file_path, verbose=False)
+    # # sc.set_self_weight_load(True)
+    # print('test stiffness check on the whole structure: {0}'.format(sc.solve()))
 
     if has_gui():
         pline_handle = draw_model(assembly_network, draw_tags=False)
         set_camera_pose(tuple(camera_pt), target_camera_pt)
         wait_for_user()
 
-    use_seq_existing_plan = args.parse_seq
-    if not use_seq_existing_plan:
-        with LockRenderer():
-            search_method = SEARCH_METHODS[args.search_method]
-            element_seq, seq_poses = plan_sequence(robot, static_obstacles, assembly_network,
-                                                   stiffness_checker=sc,
-                                                   search_method=search_method,
-                                                   value_ordering_method=args.value_order_method,
-                                                   use_layer=args.use_layer,
-                                                   file_name=args.problem)
-        write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
-    else:
-        element_seq, seq_poses = read_seq_json(args.problem)
+    # use_seq_existing_plan = args.parse_seq
+    # if not use_seq_existing_plan:
+    #     with LockRenderer():
+    #         search_method = SEARCH_METHODS[args.search_method]
+    #         element_seq, seq_poses = plan_sequence(robot, static_obstacles, assembly_network,
+    #                                                stiffness_checker=sc,
+    #                                                search_method=search_method,
+    #                                                value_ordering_method=args.value_order_method,
+    #                                                use_layer=args.use_layer,
+    #                                                file_name=args.problem)
+    #     write_seq_json(assembly_network, element_seq, seq_poses, args.problem)
+    # else:
+    #     element_seq, seq_poses = read_seq_json(args.problem)
 
     # TODO: sequence direction routing (if real fab)
-    ####################
-    # sequence planning completed
+
     if has_gui():
         # wait_for_interrupt('Press a key to visualize the plan...')
         # map(p.removeUserDebugItem, pline_handle)
         remove_all_debug()
         # draw_assembly_sequence(assembly_network, element_seq, seq_poses, time_step=1)
-
-    if USE_MESHCAT:
-        print('Visualizing assembly seq in meshcat...')
-        vis = meshcat.Visualizer()
-        try:
-            vis.open()
-        except:
-            vis.url()
-        meshcat_visualize_assembly_sequence(vis, assembly_network, element_seq, seq_poses, scale=3, time_step=0.5, direction_len=0.025)
 
     # motion planning phase
     # assume that the robot's dof is all included in the ikfast model

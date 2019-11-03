@@ -5,7 +5,7 @@ import random
 from numpy.testing import assert_equal, assert_almost_equal
 
 from choreo.interlock import compute_feasible_region_from_block_dir
-from conrob_pybullet import Euler, Pose, multiply, tform_point
+from pybullet_planning import Euler, Pose, multiply, tform_point
 from scipy.optimize import linear_sum_assignment
 from scipy.linalg import solve_triangular, norm
 
