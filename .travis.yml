@@ -11,6 +11,7 @@ python:
   - "2.7"
   - "3.6"
 
+# * use these when not using a conda env
 # before_install:
 # - pip install Cython --install-option="--no-cython-compile"
 # install:
@@ -33,12 +34,12 @@ install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-
-#  # Replace dep1 dep2 ... with your dependencies
-#   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dep1 dep2 ...
   - conda env create -f test_env.yml
   - conda activate test_env
+  - pip install Cython --install-option="--no-cython-compile"
   - pip install --no-cache-dir -r requirements-dev.txt
+#  # Replace dep1 dep2 ... with your dependencies
+#   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dep1 dep2 ...
 
 script:
 - invoke test
