@@ -14,7 +14,8 @@ class LadderGraphEdge(object):
 class LadderGraphRung(object):
     def __init__(self, id=None, data=[], edges=[], collision_fn=None):
         self.id = id
-        self.data = data # joint_data: joint values are stored in one contiguous list
+        # joint_data: joint values are stored in one contiguous list
+        self.data = data
         self.edges = edges
 
         #TODO: collision bodies or collision fn
@@ -135,6 +136,8 @@ class EdgeBuilder(object):
     def has_edges(self):
         return self.has_edges_
 
+######################################
+# ladder graph operations
 
 def append_ladder_graph(current_graph, next_graph):
     assert(isinstance(current_graph, LadderGraph) and isinstance(next_graph, LadderGraph))

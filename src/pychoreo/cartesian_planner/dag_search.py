@@ -1,3 +1,4 @@
+from pybullet_planning import INF
 from pychoreo.cartesian_planner.ladder_graph import LadderGraph
 
 class SolutionRung(object):
@@ -44,7 +45,7 @@ class DAGSearch(object):
 
         # other rungs init to inf
         for j in range(1, len(self.solution)):
-            self.solution[j].distance = [np.inf] * len(self.solution[j])
+            self.solution[j].distance = [INF] * len(self.solution[j])
 
         for r_id in range(0, len(self.solution)-1):
             n_verts = self.graph.get_rung_vert_size(r_id)

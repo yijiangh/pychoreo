@@ -1,0 +1,16 @@
+name: test_env
+
+channels:
+   - conda-forge
+
+dependencies:
+   - python=3.6
+   - pip=19.0.1
+   - numpy
+   - scipy
+   - pip:
+     - pybullet
+    #  - pybullet_planning # TODO: not necessarily tracking the latest dev branch, use this later
+     - ikfast_pybind
+     - git+https://github.com/yijiangh/pddlstream.git@feature/pip_install#egg=pddlstream
+     - git+https://github.com/yijiangh/pybullet_planning.git@dev#egg=pybullet_planning

@@ -103,7 +103,8 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
         if viz_step:
             print('#{}'.format(element))
             for ee_p in ee_poses:
-                ee_p = multiply(ee_p, tool_from_root)
+                yaw = random.uniform(-np.pi, np.pi)
+                ee_p = multiply(ee_p, Pose(euler=Euler(yaw=yaw)), tool_from_root)
                 set_pose(ee_body, ee_p)
                 if has_gui(): wait_for_user()
 
@@ -154,7 +155,7 @@ def test_extrusion_ladder_graph(viewer):
         set_extrusion_camera(node_points)
 
     cart_process_dict = build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_joint_names,
-        base_link_name, tool_from_root)
+        base_link_name, tool_from_root, viz_step=False)
 
     # load precomputed sequence
     seq_file_path = get_test_data('simple_frame_solution_regression-z.json')
@@ -164,47 +165,52 @@ def test_extrusion_ladder_graph(viewer):
 
     reverse_flags = max_valence_extrusion_direction_routing(element_sequence, elements, ground_nodes)
 
-    roll_disc = 20
-    pitch_disc = 20
+    roll_disc = 10
+    pitch_disc = 10
+    yaw_sample_size = 4
     domain_size = roll_disc * pitch_disc
 
     def get_ee_pose_map_fn(roll_disc, pitch_disc):
-        def ee_pose_map_fn(id):
+        def ee_pose_map_fn(id, yaw=None):
             j = id % roll_disc
             i = (id - j) / pitch_disc
             roll = -np.pi + i*(2*np.pi/roll_disc)
             pitch = -np.pi + j*(2*np.pi/pitch_disc)
-            yaw = random.uniform(-np.pi, np.pi)
+            yaw = random.uniform(-np.pi, np.pi) if yaw is None else yaw
             return Pose(euler=Euler(roll=roll, pitch=pitch, yaw=yaw))
         return ee_pose_map_fn
 
     with WorldSaver():
         ee_body = load_extrusion_end_effector()
         ee_pose_map_fn = get_ee_pose_map_fn(roll_disc, pitch_disc)
-        # building collision function based on the given sequence
-        cart_process_seq, e_fmaps = add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict,
-            element_sequence, element_bodies, domain_size, ee_pose_map_fn, ee_body,
-            reverse_flags=reverse_flags, tool_from_root=tool_from_root,
-            workspace_bodies=[workspace], ws_disabled_body_link_names=workspace_robot_disabled_link_names,
-            disabled_self_collision_link_names=disabled_self_collision_link_names)
+
+        # * building collision function based on the given sequence
+        with LockRenderer():
+            cart_process_seq, e_fmaps = add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict,
+                element_sequence, element_bodies, domain_size, ee_pose_map_fn, ee_body,
+                yaw_sample_size=yaw_sample_size, reverse_flags=reverse_flags, tool_from_root=tool_from_root,
+                workspace_bodies=[workspace], ws_disabled_body_link_names=workspace_robot_disabled_link_names,
+                disabled_self_collision_link_names=disabled_self_collision_link_names)
 
         assert isinstance(cart_process_seq, list)
         assert all([cart.element_identifier == e for cart, e in zip(cart_process_seq, element_sequence)])
 
-        # just move the element bodies and ee_body away to clear the visualized scene
-        set_pose(ee_body, unit_pose())
-        for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
+        # * draw the pruned EE direction set
+        if has_gui():
+            # just move the element bodies and ee_body away to clear the visualized scene
+            set_pose(ee_body, unit_pose())
+            for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
+            draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
+                                    line_width=10, direction_len=0.005)
 
-        # draw the pruned EE direction set
-        draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-                                line_width=10, direction_len=0.005)
-
-    tot_traj = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True)
+    with LockRenderer():
+        tot_traj = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True)
 
     # visualize plan
-    ik_joints = joints_from_names(robot, ik_joint_names)
-    for jts in tot_traj:
-        set_joint_positions(robot, ik_joints, jts)
-        if has_gui(): wait_for_user()
+    if has_gui():
+        ik_joints = joints_from_names(robot, ik_joint_names)
+        for jts in tot_traj:
+            set_joint_positions(robot, ik_joints, jts)
+            wait_for_user()
 
     if has_gui(): wait_for_user()

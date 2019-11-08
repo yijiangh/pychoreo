@@ -13,8 +13,8 @@ def get_random_direction_generator(**kwargs):
         yield pose
 
 
-def get_enumeration_pose_generator(pose_list, shuffle=True):
+def get_enumeration_pose_generator(pose_list, shuffle=False):
     if shuffle:
-        pose_list = random.choice(pose_list)
+        random.shuffle(pose_list)
     for p in pose_list:
         yield p

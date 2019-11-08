@@ -178,9 +178,6 @@ def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_f
     tool_from_root=None, collision_objects=[], workspace_bodies=[], check_ik=False):
     # only take the positional part
     way_points = [p[0] for p in cartesian_process.sample_ee_poses()]
-
-    from pybullet_planning import wait_for_user
-
     ee_collision_fn = get_floating_body_collision_fn(ee_body, collision_objects,
                                        ws_bodies=workspace_bodies,
                                        ws_disabled_body_link_pairs={})
@@ -203,5 +200,4 @@ def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_f
                     free_pose_map[i] = 0
                     break
                 # wait_for_user()
-    # print(free_pose_map)
     return free_pose_map
