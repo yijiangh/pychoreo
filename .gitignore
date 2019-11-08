@@ -1,5 +1,8 @@
 .idea
+.vscode
 **/*.pyc
+*.egg-info/
+*.egg
 temp
 visualizations
 statistics
