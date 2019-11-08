@@ -1,3 +1,4 @@
+from pychoreo.cartesian_planner.ladder_graph import LadderGraph
 
 class SolutionRung(object):
     def __init__(self):

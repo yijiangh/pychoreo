@@ -1,3 +1,6 @@
+import warnings
+warnings.warn("choreo_utils module deprecated", DeprecationWarning)
+
 import os
 import random
 import time
@@ -35,38 +38,6 @@ PHI_DISC = 20
 WAYPOINT_DISC_LEN = 0.01 # meter
 KINEMATICS_CHECK_TIMEOUT = 2
 
-def draw_element(node_points, element, color=(1, 0, 0)):
-    n1, n2 = element.node_ids
-    p1 = node_points[n1]
-    p2 = node_points[n2]
-    return add_line(p1, p2, color=color[:3])
-
-def is_ground(element, ground_nodes):
-    return any(n in ground_nodes for n in element.node_ids)
-
-def draw_model(assembly_network, draw_tags=False):
-    handles = []
-    for element in assembly_network.assembly_elements.values():
-        color = (0, 0, 1) if assembly_network.is_element_grounded(element.e_id) else (1, 0, 0)
-        p1, p2 = assembly_network.get_end_points(element.e_id)
-        handles.append(add_line(p1, p2, color=tuple(color)))
-        if draw_tags:
-            e_mid = (np.array(p1) + np.array(p2)) / 2
-            handles.append(add_text('g_dist=' + str(element.to_ground_dist), position=e_mid))
-
-    return handles
-
-def load_end_effector():
-    root_directory = os.path.dirname(os.path.abspath(__file__))
-    with HideOutput():
-        ee = load_pybullet(os.path.join(root_directory, END_EFFECTOR_PATH), fixed_base=True)
-    return ee
-
-def get_tip_from_ee_base(ee):
-    world_from_tool_base = get_link_pose(ee, link_from_name(ee, EE_TOOL_BASE_LINK))
-    world_from_tool_tip = get_link_pose(ee, link_from_name(ee, EE_TOOL_TIP))
-    return multiply(invert(world_from_tool_tip), world_from_tool_base)
-
 def get_ee_collision_fn(body, obstacles, attachments=[], **kwargs):
     # TODO: convert most of these to keyword arguments
     moving_bodies = [body] + [attachment.child for attachment in attachments]
@@ -84,23 +55,6 @@ def get_ee_collision_fn(body, obstacles, attachments=[], **kwargs):
 # sample fns
 ################################
 EEDirection = namedtuple('EEDirection', ['phi', 'theta'])
-
-def make_print_pose(phi, theta, ee_yaw=0):
-    return multiply(Pose(euler=Euler(roll=theta, pitch=0, yaw=phi)),
-                    Pose(euler=Euler(yaw=ee_yaw)))
-
-def cmap_id2angle(id, return_direction_vector=False):
-    j = id % THETA_DISC
-    i = (id - j) / THETA_DISC
-    phi = -np.pi + i*(2*np.pi/PHI_DISC)
-    theta = -np.pi + j*(2*np.pi/THETA_DISC)
-    if return_direction_vector:
-        return make_print_pose(phi, theta, 0)
-    else:
-        return phi, theta
-
-def sample_ee_yaw():
-    return random.uniform(-np.pi, np.pi)
 
 def get_self_link_pairs(body, joints, disabled_collisions=set(), only_moving=True):
     moving_links = get_moving_links(body, joints)
@@ -438,107 +392,6 @@ def update_collision_map_picknplace(assembly_network, ee_body, print_along_e_id,
     return print_along_cmap
 
 
-def update_collision_map_batch(assembly_network, ee_body, print_along_e_id, print_along_cmap,
-                               printed_nodes, bodies=[]):
-    """
-    :param print_along_e_id: element id that end effector is printing along
-    :param exist_e_id: element that is assumed printed, checked against
-    :param print_along_cmap: print_along_element's collsion map, a list of bool,
-        entry = 1 means collision-free (still available),  entry=0 means not feasible
-    :return:
-    """
-    assert(len(print_along_cmap) == PHI_DISC * THETA_DISC)
-    e_ns = set(assembly_network.get_element_end_point_ids(print_along_e_id))
-    # TODO: start with larger exist valence node
-    e_ns.difference_update([printed_nodes[0]])
-    way_points = interpolate_straight_line_pts(assembly_network.get_node_point(printed_nodes[0]),
-                                               assembly_network.get_node_point(e_ns.pop()),
-                                               WAYPOINT_DISC_LEN)
-
-    cmap_ids = list(range(len(print_along_cmap)))
-    # random.shuffle(cmap_ids)
-    for i in cmap_ids:
-        if print_along_cmap[i] == 1:
-            phi, theta = cmap_id2angle(i)
-            if check_ee_element_collision(ee_body, way_points, phi, theta, static_bodies=bodies, in_print_collision_obj=[assembly_network.get_element_body(print_along_e_id)]):
-                print_along_cmap[i] = 0
-            # TODO: check against shrinked geoemtry only if the exist_e is in neighborhood of print_along_e
-
-    return print_along_cmap
-
-def draw_assembly_sequence(assembly_network, element_id_sequence, seq_poses=None,
-                           line_width=10, text_size=1, time_step=0.5, direction_len=0.005):
-    handles = []
-    for k in element_id_sequence.keys():
-        e_id = element_id_sequence[k]
-        # n1, n2 = assembly_network.assembly_elements[e_id].node_ids
-        # e_body = assembly_network.assembly_elements[e_id].element_body
-        # p1 = assembly_network.assembly_joints[n1].node_point
-        # p2 = assembly_network.assembly_joints[n2].node_point
-        p1, p2 = assembly_network.get_end_points(e_id)
-        e_mid = (np.array(p1) + np.array(p2)) / 2
-
-        seq_ratio = float(k)/(len(element_id_sequence)-1)
-        color = np.array([0, 0, 1])*(1-seq_ratio) + np.array([1,0,0])*seq_ratio
-        handles.append(add_line(p1, p2, color=tuple(color), width=line_width))
-        handles.append(add_text(str(k), position=e_mid, text_size=text_size))
-
-        if seq_poses is not None:
-            assert(k in seq_poses)
-            for ee_dir in seq_poses[k]:
-                assert(isinstance(ee_dir, EEDirection))
-                cmap_pose = multiply(Pose(point=e_mid), make_print_pose(ee_dir.phi, ee_dir.theta))
-                origin_world = tform_point(cmap_pose, np.zeros(3))
-                axis = np.zeros(3)
-                axis[2] = 1
-                axis_world = tform_point(cmap_pose, direction_len*axis)
-                handles.append(add_line(origin_world, axis_world, color=axis))
-                # handles.append(draw_pose(cmap_pose, direction_len))
-
-        time.sleep(time_step)
-
-def set_cmaps_using_seq(seq, csp):
-    """following the forward order, prune the cmaps"""
-    # assert(isinstance(csp, AssemblyCSP))
-    built_obstacles = csp.obstacles
-    # print('static obstacles: {}'.format(built_obstacles))
-
-    rec_seq = set()
-    print(seq)
-    for i in sorted(seq.keys()):
-        check_e_id = seq[i]
-        # print('------')
-        # print('prune seq #{0} - e{1}'.format(i, check_e_id))
-        # print('obstables: {}'.format(built_obstacles))
-        # TODO: temporal fix, this should be consistent with the seq search!!!
-        if not csp.net.is_element_grounded(check_e_id):
-            ngbh_e_ids = rec_seq.intersection(csp.net.get_element_neighbor(check_e_id))
-            shared_node = set()
-            for n_e in ngbh_e_ids:
-                shared_node.update([csp.net.get_shared_node_id(check_e_id, n_e)])
-            shared_node = list(shared_node)
-        else:
-            shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
-                           if csp.net.assembly_joints[v_id].is_grounded]
-
-        assert(shared_node)
-
-        st_time = time.time()
-        while time.time() - st_time < 5:
-            val_cmap = np.ones(PHI_DISC * THETA_DISC, dtype=int) #csp.cmaps[check_e_id]
-            csp.cmaps[check_e_id] = update_collision_map_batch(csp.net, csp.ee_body,
-                                                               print_along_e_id=check_e_id, print_along_cmap=val_cmap,
-                                                               printed_nodes=shared_node,
-                                                               bodies=built_obstacles, )
-            # print('cmaps #{0} e{1}: {2}'.format(i, check_e_id, sum(csp.cmaps[check_e_id])))
-            if sum(csp.cmaps[check_e_id]) > 0:
-                break
-
-        assert(sum(csp.cmaps[check_e_id]) > 0)
-        built_obstacles = built_obstacles + [csp.net.get_element_body(check_e_id)]
-        rec_seq.update([check_e_id])
-
-    return csp
 
 def check_and_draw_ee_collision(robot, static_obstacles, assembly_network, exist_element_id, check_e_id,
                                 line_width=10, text_size=1, direction_len=0.005):
@@ -669,52 +522,9 @@ def read_csp_log_json(file_name, specs='', log_path=None):
         return assign_history
 
 
-def pairwise_collision_diagnosis(body1, body2, max_distance=MAX_DISTANCE): # 10000
-    return p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
-                              physicsClientId=CLIENT)
-
-
-def pairwise_link_collision_diagnosis(body1, link1, body2, link2, max_distance=MAX_DISTANCE): # 10000
-    return p.getClosestPoints(bodyA=body1, bodyB=body2, distance=max_distance,
-                              linkIndexA=link1, linkIndexB=link2,
-                              physicsClientId=CLIENT)
-
-
-def link_pairs_collision_diagnosis(body1, links1, body2, links2=None, **kwargs):
-    if links2 is None:
-        links2 = get_all_links(body2)
-    for link1, link2 in product(links1, links2):
-        if (body1 == body2) and (link1 == link2):
-            continue
-        if pairwise_link_collision(body1, link1, body2, link2, **kwargs):
-            return pairwise_link_collision_diagnosis(body1, link1, body2, link2, **kwargs)
-    return None
-
-def set_all_bodies_color(color=(1,1,1,0.3)):
-    bodies = get_bodies()
-    for b in bodies:
-        set_color(b, color)
 
 def get_body_from_pb_id(i):
     return p.getBodyUniqueId(i, physicsClientId=CLIENT)
-
-def parse_point(json_point, scale=DEFAULT_SCALE):
-    # TODO: should be changed to list
-    return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])
-
-
-def parse_rhino_transform(json_transform):
-    transform = np.eye(4)
-    transform[:3, 3] = parse_point(json_transform['Origin']) # Normal
-    transform[:3, :3] = np.vstack([parse_point(json_transform[axis], scale=DEFAULT_SCALE)
-                                   for axis in ['XAxis', 'YAxis', 'ZAxis']])
-    return transform
-
-
-def parse_transform(json_tf, scale=DEFAULT_SCALE):
-    tf = np.vstack([json_tf[i*4:i*4 + 4] for i in range(4)])
-    tf[:3, 3] *= scale
-    return tf
 
 
 def extract_file_name(str_key):
@@ -724,12 +534,9 @@ def extract_file_name(str_key):
 def color_print(msg):
     print('\x1b[6;30;43m' + msg + '\x1b[0m')
 
-def int2element_id(id):
-    return 'e_' + str(id)
-
 def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
     """get the best solution based on closeness to the q_guess and weighted joint diff
-    
+
     Parameters
     ----------
     sols : [type]
@@ -742,7 +549,7 @@ def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
         [description], by default None
     best_sol_only : bool, optional
         [description], by default False
-    
+
     Returns
     -------
     lists of joint conf (list)

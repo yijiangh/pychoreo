@@ -8,14 +8,8 @@ import numpy as np
 
 from pybullet_planning import add_line, create_cylinder, set_point, Euler, quat_from_euler, \
     set_quat, get_movable_joints, set_joint_positions, pairwise_collision, Pose, multiply, Point, load_model, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name
-# from choreo.assembly_datastructure import AssemblyElement
-
-__all__ = [
-    'load_extrusion',
-    'create_elements',
-]
-
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, apply_alpha, set_camera_pose
+from pybullet_planning import RED
 
 LENGTH_SCALE_CONVERSION = {
     'millimeter': 1e-3,
@@ -23,6 +17,7 @@ LENGTH_SCALE_CONVERSION = {
 }
 
 ##################################################
+
 def load_extrusion(file_path, parse_layers=False, verbose=False):
     with open(file_path, 'r') as f:
         json_data = json.loads(f.read())
@@ -37,8 +32,10 @@ def load_extrusion(file_path, parse_layers=False, verbose=False):
             len(node_points), len(ground_nodes), len(elements)))
     return elements, node_points, ground_nodes
 
+
 def parse_point(json_point, scale=1.0):
     return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])
+
 
 def parse_transform(json_transform, scale=1.0):
     transform = np.eye(4)
@@ -62,7 +59,7 @@ def parse_elements(json_data, parse_layers=False):
 
 
 def parse_node_points(json_data, scale=1.0):
-    origin = parse_origin(json_data)
+    origin = parse_origin(json_data, scale)
     return [origin + parse_point(json_node['point'], scale=scale) for json_node in json_data['node_list']]
 
 
@@ -71,46 +68,13 @@ def parse_ground_nodes(json_data):
 
 ##################################################
 
-def draw_element(node_points, element, color=(1, 0, 0)):
-    n1, n2 = element
-    p1 = node_points[n1]
-    p2 = node_points[n2]
-    return add_line(p1, p2, color=color[:3])
-
-
-def create_elements(node_points, elements, radius=0.001, color=(1, 0, 0, 1)):
-    """ Create pybullet bodies for extrusion rods (cylinder)
-
-    Parameters
-    ----------
-    node_points : type
-        Description of parameter `node_points`.
-    elements : type
-        Description of parameter `elements`.
-    radius : type
-        Description of parameter `radius`.
-    color : type
-        Description of parameter `color`.
-
-    Returns
-    -------
-    create_elements(node_points, elements, radius=0.0005,
-        Description of returned object.
-
-    """
-    raise DeprecationWarning
-
-    #radius = 0.0001
-    #radius = 0.00005
-    #radius = 0.000001
-    radius = 1e-6
-    # TODO: seems to be a min radius
-
+def create_elements_bodies(node_points, elements, radius=0.0015, shrink=0.002, color=apply_alpha(RED, alpha=1)):
     # TODO: just shrink the structure to prevent worrying about collisions at end-points
-    # shrink = 0.01
-    shrink = 0.005
-    # shrink = 0.002
-    #shrink = 0.
+    # TODO: could scale the whole environment
+    # radius = 1e-6 # 5e-5 | 1e-4
+    # TODO: seems to be a min radius
+    # 0. | 0.002 | 0.005
+
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]
@@ -130,24 +94,3 @@ def create_elements(node_points, elements, radius=0.001, color=(1, 0, 0, 1)):
         set_quat(body, quat_from_euler(Euler(pitch=theta, yaw=phi)))
         # p1 is z=-height/2, p2 is z=+height/2
     return element_bodies
-
-##################################################
-
-def get_node_neighbors(elements):
-    node_neighbors = defaultdict(set)
-    for e in elements:
-        n1, n2 = e
-        node_neighbors[n1].add(e)
-        node_neighbors[n2].add(e)
-    return node_neighbors
-
-
-def get_element_neighbors(element_bodies):
-    node_neighbors = get_node_neighbors(element_bodies)
-    element_neighbors = defaultdict(set)
-    for e in element_bodies:
-        n1, n2 = e
-        element_neighbors[e].update(node_neighbors[n1])
-        element_neighbors[e].update(node_neighbors[n2])
-        element_neighbors[e].remove(e)
-    return element_neighbors

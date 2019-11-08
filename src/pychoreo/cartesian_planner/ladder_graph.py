@@ -1,4 +1,5 @@
 from pybullet_planning import INF
+from copy import deepcopy
 
 class LadderGraphEdge(object):
     def __init__(self, idx=None, cost=-INF):
@@ -134,3 +135,57 @@ class EdgeBuilder(object):
     def has_edges(self):
         return self.has_edges_
 
+
+def append_ladder_graph(current_graph, next_graph):
+    assert(isinstance(current_graph, LadderGraph) and isinstance(next_graph, LadderGraph))
+    assert(current_graph.dof == next_graph.dof)
+
+    cur_size = current_graph.size
+    new_tot_size = cur_size + next_graph.size
+    dof = current_graph.dof
+
+    # just add two sets of rungs together to have a longer ladder graph
+    current_graph.resize(new_tot_size)
+    for i in range(next_graph.size):
+        current_graph.rungs[cur_size + i] = next_graph.rungs[i]
+
+    # connect graphs at the boundary
+    a_rung = current_graph.get_rung(cur_size - 1)
+    b_rung = current_graph.get_rung(cur_size)
+    n_st_vert = int(len(a_rung.data) / dof)
+    n_end_vert = int(len(b_rung.data) / dof)
+
+    edge_builder = EdgeBuilder(n_st_vert, n_end_vert, dof)
+    for k in range(n_st_vert):
+        st_id = k * dof
+        for j in range(n_end_vert):
+            end_id = j * dof
+            edge_builder.consider(a_rung.data[st_id : st_id+dof], b_rung.data[end_id : end_id+dof], j)
+        edge_builder.next(k)
+
+    edges_list = edge_builder.result
+    # assert(edge_builder.has_edges)
+    current_graph.assign_edges(cur_size - 1, edges_list)
+    return current_graph
+
+
+def concatenate_graph_vertically(graph_above, graph_below):
+    assert isinstance(graph_above, LadderGraph)
+    assert isinstance(graph_below, LadderGraph)
+    assert graph_above.size == graph_below.size, 'must have same amount of rungs!'# same number of rungs
+    num_rungs = graph_above.size
+    for i in range(num_rungs):
+        rung_above = graph_above.get_rung(i)
+        above_jts = graph_above.get_rung(i).data
+        below_jts = graph_below.get_rung(i).data
+        above_jts.extend(below_jts)
+        if i != num_rungs - 1:
+            # shifting target vert id in below_edges
+            next_above_rung_size = graph_above.get_rung_vert_size(i + 1)
+            below_edges = graph_below.get_edges(i)
+            for v_out_edges in below_edges:
+                e_copy = deepcopy(v_out_edges)
+                for v_out_e in e_copy:
+                    v_out_e.idx += next_above_rung_size
+                rung_above.edges.append(e_copy)
+    return graph_above
