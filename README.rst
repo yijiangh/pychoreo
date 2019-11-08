@@ -8,7 +8,7 @@ pychoreo
     :target: https://github.com/yijiangh/pychoreo/blob/master/LICENSE
     :alt: License MIT
 
-.. image:: https://travis-ci.org/yijiangh/pychoreo.svg?branch=master
+.. image:: https://travis-ci.org/yijiangh/pychoreo.svg?branch=dev
     :target: https://travis-ci.org/yijiangh/pychoreo
     :alt: Travis CI
 
