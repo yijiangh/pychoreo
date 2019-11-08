@@ -1,0 +1,92 @@
+{
+  "algorithm": "regression",
+  "heuristic": "z",
+  "num_elements": 19,
+  "num_evaluated": 19,
+  "num_remaining": 0,
+  "plan": [
+    [
+      2,
+      4
+    ],
+    [
+      3,
+      7
+    ],
+    [
+      1,
+      6
+    ],
+    [
+      0,
+      5
+    ],
+    [
+      4,
+      6
+    ],
+    [
+      4,
+      7
+    ],
+    [
+      5,
+      6
+    ],
+    [
+      6,
+      7
+    ],
+    [
+      5,
+      7
+    ],
+    [
+      4,
+      8
+    ],
+    [
+      5,
+      9
+    ],
+    [
+      4,
+      9
+    ],
+    [
+      6,
+      10
+    ],
+    [
+      7,
+      11
+    ],
+    [
+      9,
+      10
+    ],
+    [
+      8,
+      10
+    ],
+    [
+      8,
+      11
+    ],
+    [
+      10,
+      11
+    ],
+    [
+      9,
+      11
+    ]
+  ],
+  "plan_extrusions": true,
+  "problem": "simple_frame",
+  "runtime": 14.383045434951782,
+  "use_collisions": true,
+  "use_stiffness": true,
+  "valid": true,
+  "write_time": "2019-11-02 22:15:40.065489"
+}

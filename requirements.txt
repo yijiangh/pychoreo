@@ -1,0 +1,4 @@
+numpy
+pybullet
+ikfast_pybind
+compas_fab
