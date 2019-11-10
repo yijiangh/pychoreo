@@ -1,3 +1,4 @@
+# * pychoreo
 # safelist
 branches:
   only:
@@ -34,7 +35,7 @@ install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-  - conda env create -f test_env.yml
+  - conda env create -f test_env.yml python=$TRAVIS_PYTHON_VERSION
   - conda activate test_env
   - pip install Cython --install-option="--no-cython-compile"
   - pip install --no-cache-dir -r requirements-dev.txt

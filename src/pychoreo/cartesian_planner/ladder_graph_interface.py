@@ -3,12 +3,13 @@ from pybullet_planning import WorldSaver
 from pychoreo.cartesian_planner.ladder_graph import LadderGraph, EdgeBuilder
 from pychoreo.cartesian_planner.ladder_graph import append_ladder_graph, concatenate_graph_vertically
 from pychoreo.cartesian_planner.dag_search import DAGSearch
+from pychoreo.cartesian_planner.postprocessing import divide_list_chunks
+from pychoreo.process_model.trajectory import Trajectory
 
 def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, viz_inspect=False):
     # input can be list of lists
     # these will be concatenated horizontally under same parametrization
     # TODO: multiple cartesian processes share the same EE pose gen
-
     from pybullet_planning import joints_from_names, set_joint_positions, wait_for_user
     robot = cart_proc_list[0].robot
     ik_joint_names = cart_proc_list[0].ik_joint_names
@@ -17,7 +18,7 @@ def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, v
 
     world_saver = WorldSaver()
     # * build ladder graph for each cart_proc in the list
-    graph_list = []
+    graph_dict = {}
     for cp_id, cart_proc in enumerate(cart_proc_list):
         dof = cart_proc.dof
         vertical_graph = LadderGraph(dof)
@@ -76,26 +77,28 @@ def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, v
                         graph.assign_edges(i, edges)
 
                     # vertically concatenate graphs, no extra edges added
-                    if vertical_graph.size == 0 and graph.size > 0:
-                        # no graph from above
-                        vertical_graph = graph
-                    else:
+                    if graph.size > 0:
+                        if vertical_graph.size == 0:
+                            # no graph from above
+                            vertical_graph = graph
+                        else :
+                            concatenate_graph_vertically(vertical_graph, graph)
                         vertical_subgraph_cnt += 1
-                        concatenate_graph_vertically(vertical_graph, graph)
             except StopIteration:
-                if verbose: print('pose gen fn iterator exhausted!')
+                # if verbose: print('pose gen fn iterator exhausted!')
                 break
         if vertical_graph.size > 0:
-            graph_list.append(vertical_graph)
+            graph_dict[cp_id] = vertical_graph
             if verbose: print('#{}-{} #{} pose families formed.'.format(cp_id, cart_proc, vertical_subgraph_cnt))
         else:
-            if verbose: print('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc))
+            print('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc))
+            wait_for_user()
 
     world_saver.restore()
 
     # * horizontally concatenate the graphs
     unified_graph = LadderGraph(dof)
-    for g in graph_list:
+    for cp_id, g in graph_dict.items():
         unified_graph = append_ladder_graph(unified_graph, g)
 
     # * DAG solve for the concatenated graph
@@ -103,8 +106,12 @@ def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, v
     dag_search.run()
     tot_traj = dag_search.shortest_path()
 
-    # TODO: return trajectory for each processes
-    return tot_traj
+    # * Divide the contatenated trajectory back to processes
+    proc_trajs = divide_list_chunks(tot_traj, [g.size for g in graph_dict.values()])
+    proc_trajs = {cp_id : traj for cp_id, traj in zip(graph_dict.keys(), proc_trajs)}
+    for cp_id, proc_traj in proc_trajs.items():
+        cart_proc_list[cp_id].trajectory = Trajectory(cart_proc_list[cp_id].robot, cart_proc_list[cp_id].ik_joints, proc_traj)
+    return cart_proc_list
 
 # def generate_ladder_graph_from_poses(robot, dof, pose_list, collision_fn=lambda x: False, dt=-1):
 #     # TODO: lazy collision check

@@ -1,7 +1,7 @@
 import random
 import warnings
 
-from pybullet_planning import multiply, set_pose, get_movable_joints
+from pybullet_planning import multiply, set_pose, get_movable_joints, joints_from_names
 from pybullet_planning import get_collision_fn, get_floating_body_collision_fn
 
 # EE domain (can be directions, or directly poses)
@@ -43,7 +43,7 @@ def _null_collision_fn(conf):
     # raise Warning('collision fn not specified!')
     # return False
 
-class CartesianTrajectory(object):
+class CartesianProcess(object):
     def __init__(self, process_name='',
         robot=None, ik_joint_names=[], path_points=[],
         ee_pose_gen_fn=_null_ee_pose_gen_fn, sample_ik_fn=_null_sample_ik_fn, collision_fn=_null_collision_fn,
@@ -59,6 +59,7 @@ class CartesianTrajectory(object):
         self._pointwise_collision_fns = pointwise_collision_fns
         self._reverse = False
         self._element_id = element_identifier
+        self._trajectory = None
 
     @property
     def robot(self):
@@ -75,6 +76,10 @@ class CartesianTrajectory(object):
     @ik_joint_names.setter
     def ik_joint_names(self, ik_joint_names_):
         self._ik_joint_names = ik_joint_names_
+
+    @property
+    def ik_joints(self):
+        return joints_from_names(self.robot, self.ik_joint_names)
 
     @property
     def path_points(self):
@@ -147,6 +152,16 @@ class CartesianTrajectory(object):
     def reverse(self, reverse_):
         self._reverse = reverse_
 
+    @property
+    def trajectory(self):
+        return self._trajectory
+
+    @trajectory.setter
+    def trajectory(self, trajectory_):
+        from pychoreo.process_model.trajectory import Trajectory
+        assert isinstance(trajectory_, Trajectory)
+        self._trajectory = trajectory_
+
     def sample_ee_poses(self, tool_from_root=None):
         ee_poses = next(self.ee_pose_gen_fn)
         if tool_from_root:
@@ -175,12 +190,12 @@ class CartesianTrajectory(object):
 ##################################################
 
 def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_fn, ee_body,
-    tool_from_root=None, collision_objects=[], workspace_bodies=[], check_ik=False):
+    tool_from_root=None, collision_objects=[], workspace_bodies=[], workspace_disabled_collisions={}, check_ik=False):
     # only take the positional part
     way_points = [p[0] for p in cartesian_process.sample_ee_poses()]
     ee_collision_fn = get_floating_body_collision_fn(ee_body, collision_objects,
-                                       ws_bodies=workspace_bodies,
-                                       ws_disabled_body_link_pairs={})
+                                       workspace_bodies=workspace_bodies,
+                                       workspace_disabled_collisions=workspace_disabled_collisions)
 
     fmap_ids = list(range(len(free_pose_map)))
     random.shuffle(fmap_ids)

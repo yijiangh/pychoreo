@@ -1,8 +1,15 @@
 import time
 import numpy as np
-from pybullet_planning import set_camera_pose, add_line, add_text, wait_for_user, LockRenderer
-from pybullet_planning import unit_pose, multiply, tform_point
+import colorsys
+from pybullet_planning import LockRenderer, set_camera_pose, add_line, add_text, wait_for_user, connect, load_pybullet, \
+    reset_simulation, disconnect, wait_for_duration
+from pybullet_planning import joints_from_names, set_joint_positions
+from pybullet_planning import get_link_pose, link_from_name
+from pybullet_planning import unit_pose, multiply, tform_point, point_from_pose
 from pybullet_planning import Pose, Point, Euler, INF
+
+from pychoreo_examples.extrusion.trajectory import PrintTrajectory
+from pychoreo_examples.extrusion.utils import is_ground
 
 ##################################################
 
@@ -12,6 +19,18 @@ def draw_element(node_points, element, color=(1, 0, 0)):
     p2 = node_points[n2]
     return add_line(p1, p2, color=color[:3])
 
+
+def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
+    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+
+
+def draw_ordered(elements, node_points):
+    #colors = spaced_colors(len(elements))
+    colors = sample_colors(len(elements))
+    handles = []
+    for element, color in zip(elements, colors):
+        handles.append(draw_element(node_points, element, color=color))
+    return handles
 
 ##################################################
 
@@ -55,3 +74,66 @@ def draw_extrusion_sequence(node_points, element_bodies, element_sequence, seq_p
             time.sleep(time_step)
         else:
             wait_for_user()
+
+##################################################
+
+def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, trajectories,
+                         workspace_urdf=None, animate=True, time_step=0.02):
+    if trajectories is None:
+        return
+    connect(use_gui=True)
+    set_extrusion_camera(node_points)
+    robot = load_pybullet(robot_urdf, fixed_base=True)
+    if workspace_urdf: workspace = load_pybullet(workspace_urdf, fixed_base=True)
+    ik_joints = joints_from_names(robot, ik_joint_names)
+
+    if not animate:
+        planned_elements = [traj.element for traj in trajectories]
+        with LockRenderer():
+            draw_ordered(planned_elements, node_points)
+        print('Planned sequence visualized.')
+        wait_for_user()
+        disconnect()
+        return
+
+    print('Ready to start simulation of the planned Trajectory.')
+    wait_for_user()
+    #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
+    #for body in element_bodies.values():
+    #    set_color(body, (1, 0, 0, 0))
+    connected_nodes = set(ground_nodes)
+    print('Trajectories num: {}'.format(len(trajectories)))
+    for i, trajectory in enumerate(trajectories):
+        #wait_for_user()
+        #set_color(element_bodies[element], (1, 0, 0, 1))
+        last_point = None
+        handles = []
+        for conf in trajectory.traj_path:
+            set_joint_positions(robot, ik_joints, conf)
+            # * tracing TCP to represent extrusion
+            if isinstance(trajectory, PrintTrajectory):
+                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, ee_link_name)))
+                if last_point is not None:
+                    color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
+                    handles.append(add_line(last_point, current_point, color=color))
+                last_point = current_point
+            if time_step is None:
+                wait_for_user()
+            else:
+                # ! this seems to have a bug on windows
+                # wait_for_duration(time_step)
+                time.sleep(time_step)
+
+        # * sanity check on connectness
+        if isinstance(trajectory, PrintTrajectory):
+            is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
+            print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
+                i, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.traj_path)))
+            if not is_connected:
+                print('Warning: this element is not connected to existing partial structure!')
+                wait_for_user()
+            connected_nodes.add(trajectory.n2)
+
+    wait_for_user()
+    reset_simulation()
+    disconnect()

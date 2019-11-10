@@ -1,0 +1,32 @@
+{
+  "algorithm": "regression",
+  "heuristic": "z",
+  "num_elements": 4,
+  "num_evaluated": 4,
+  "num_remaining": 0,
+  "plan": [
+    [
+      0,
+      3
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      3,
+      4
+    ],
+    [
+      2,
+      4
+    ]
+  ],
+  "plan_extrusions": true,
+  "problem": "four-frame",
+  "runtime": 0.3207378387451172,
+  "use_collisions": true,
+  "use_stiffness": true,
+  "valid": true,
+  "write_time": "2019-11-09 22:22:46.621116"
+}
