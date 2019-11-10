@@ -3,6 +3,7 @@ import json
 import random
 import numpy as np
 import pytest
+from itertools import chain
 
 from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
     reset_simulation, disconnect
@@ -13,9 +14,10 @@ from pybullet_planning import joints_from_names, link_from_name, has_link, get_c
     draw_pose, set_pose, set_joint_positions
 
 from pychoreo.process_model.cartesian_process import CartesianProcess
-from pychoreo.process_model.trajectory import Trajectory
-from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
+from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
+from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
+# from pychoreo.transition_planner.motion_planner_interface import solve_transition_between_cartesian_processes
 
 import pychoreo_examples
 from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies
@@ -32,8 +34,8 @@ from compas_fab.robots import RobotSemantics
 
 @pytest.fixture
 def problem():
-    # return 'four-frame'
-    return 'simple_frame'
+    return 'four-frame'
+    # return 'simple_frame'
 
 def get_problem_path(problem):
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
@@ -145,6 +147,7 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
         cart_traj_dict[element] = cart_process
     return cart_traj_dict
 
+@pytest.mark.extrusion
 def test_extrusion_ladder_graph(problem, viewer):
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -177,10 +180,11 @@ def test_extrusion_ladder_graph(problem, viewer):
         assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
+    # * create cartesian processes without a sequence being given, with random pose generators
     cart_process_dict = build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_joint_names,
         base_link_name, tool_from_root, viz_step=False)
 
-    # load precomputed sequence
+    # * load precomputed sequence
     with open(seq_file_path, 'r') as f:
         seq_data = json.loads(f.read())
     element_sequence = [tuple(e) for e in seq_data['plan']]
@@ -236,14 +240,29 @@ def test_extrusion_ladder_graph(problem, viewer):
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
         assert all(cp.trajectory is not None for cp in cart_process_seq), 'not all cartesian processes have found a plan!'
 
-        # TODO: we can do reverse processing here?
+        # TODO: we can do reverse processing here, instead of inside add_collision_fns_from_seq?
 
         # * extract trajectory from CartProcesses
-        trajs = [PrintTrajectory.from_trajectory(cp.trajectory, cp.element_identifier, reverse_flags[cp_id]) \
-            for cp_id, cp in enumerate(cart_process_seq) if cp.trajectory]
+        print_trajs = [PrintTrajectory.from_trajectory(cp.trajectory, cp.element_identifier, reverse_flags[cp_id]) \
+                       for cp_id, cp in enumerate(cart_process_seq) if cp.trajectory]
 
-    # * transition motion planning between extrusions
+    # TODO get rid of this when transition planning is done
+    full_trajs = print_trajs
 
+    # # * transition motion planning between extrusions
+    # include_return2idle = True
+    # transition_traj = solve_transition_between_cartesian_processes(print_trajs, start_conf=None, return_start=include_return2idle)
+    # assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
+    # if include_return2idle:
+    #     assert len(transition_traj)-1 == len(print_trajs)
+    # else:
+    #     assert len(transition_traj) == len(print_trajs)
+
+    # # * weave the Cartesian and transition processses together
+    # if include_return2idle:
+    #     full_trajs = list(chain.from_iterable(zip(transition_traj[:-1], print_trajs))) + [transition_traj[-1]]
+    # else:
+    #     full_trajs = list(chain.from_iterable(zip(transition_traj, print_trajs)))
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()
@@ -251,5 +270,5 @@ def test_extrusion_ladder_graph(problem, viewer):
 
     # visualize plan
     if viewer:
-        display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, trajs,
+        display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
                              workspace_urdf=workspace_urdf, animate=True, time_step=0.02)
