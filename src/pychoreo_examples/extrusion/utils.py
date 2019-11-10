@@ -14,10 +14,14 @@ from pybullet_planning import set_pose, multiply, pairwise_collision, get_collis
 from pybullet_planning import RED, Pose, Euler
 
 from pychoreo.utils.stream_utils import get_enumeration_pose_generator
-from pychoreo.cartesian_planner.cartesian_process import prune_ee_feasible_directions
+from pychoreo.process_model.cartesian_process import prune_ee_feasible_directions
 from pychoreo_examples.extrusion.stream import extrusion_ee_pose_gen_fn
 
 ##################################################
+
+def is_ground(element, ground_nodes):
+    return any(n in ground_nodes for n in element)
+
 
 def get_node_neighbors(elements):
     node_neighbors = defaultdict(set)
@@ -105,9 +109,9 @@ def add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict, element
         # use sequenced elements for collision objects
         built_obstacles = built_obstacles + [element_bodies[element]]
         cart_process_dict[element].collision_fn = get_collision_fn(robot, ik_joints, built_obstacles,
-                                         attachments=[], check_self_collisions=self_collisions,
-                                         disabled_self_collision_link_pairs=disabled_collisions,
-                                         ws_bodies=workspace_bodies,
-                                         ws_disabled_body_link_pairs=ws_disabled_collisions,
+                                         attachments=[], self_collisions=self_collisions,
+                                         disabled_collisions=disabled_collisions,
+                                         workspace_bodies=workspace_bodies,
+                                         workspace_disabled_collisions=ws_disabled_collisions,
                                          custom_limits={})
     return [cart_process_dict[e] for e in element_seq], e_fmaps

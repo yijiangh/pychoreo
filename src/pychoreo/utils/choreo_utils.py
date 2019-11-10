@@ -38,6 +38,7 @@ PHI_DISC = 20
 WAYPOINT_DISC_LEN = 0.01 # meter
 KINEMATICS_CHECK_TIMEOUT = 2
 
+
 def get_ee_collision_fn(body, obstacles, attachments=[], **kwargs):
     # TODO: convert most of these to keyword arguments
     moving_bodies = [body] + [attachment.child for attachment in attachments]
@@ -123,77 +124,6 @@ def draw_collision_diagnosis(pybullet_output, paint_all_others=False, viz_last_d
         for h in handles: remove_debug(h)
         set_color(b1, (1, 1, 1, 1))
         set_color(b2, (1, 1, 1, 1))
-
-
-def get_collision_fn(body, joints, obstacles, attachments=[], self_collisions=True, disabled_collisions=set(),
-                     custom_limits={}, ignored_pairs=[], diagnosis=False, viz_last_duration=-1, **kwargs):
-    """copy from pybullet.utils to allow dynmic collision objects"""
-    # TODO: convert most of these to keyword arguments
-    check_link_pairs = get_self_link_pairs(body, joints, disabled_collisions=disabled_collisions) if self_collisions else []
-    check_link_attach_body_pairs = get_link_attached_body_pairs(body, attachments)
-
-    moving_bodies = [body] + [attachment.child for attachment in attachments]
-    if obstacles is None:
-        obstacles = list(set(get_bodies()) - set(moving_bodies))
-    else:
-        obstacles = list(set(obstacles) - set(moving_bodies))
-    check_body_pairs = list(set(product(moving_bodies, obstacles)))  # + list(combinations(moving_bodies, 2))
-
-    if ignored_pairs:
-        for body_pair in ignored_pairs:
-            found = False
-            for c_body_pair in check_body_pairs:
-                if body_pair[0] in c_body_pair and body_pair[1] in c_body_pair:
-                    check_body_pairs.remove(c_body_pair)
-                    found = True
-                if found:
-                    break
-
-    lower_limits, upper_limits = get_custom_limits(body, joints, custom_limits)
-
-    # TODO: maybe prune the link adjacent to the robot
-    # TODO: test self collision with the holding
-    def collision_fn(q, dynamic_obstacles=[]):
-        if not all_between(lower_limits, q, upper_limits):
-            return True
-        set_joint_positions(body, joints, q)
-        for attachment in attachments:
-            attachment.assign()
-        if dynamic_obstacles:
-            check_body_pairs.extend(list(product(moving_bodies, dynamic_obstacles)))
-
-        # body's link-link self collision
-        for link1, link2 in check_link_pairs:
-            # Self-collisions should not have the max_distance parameter
-            if pairwise_link_collision(body, link1, body, link2): #, **kwargs):
-                if diagnosis:
-                    print('body link-link collision!')
-                    cr = pairwise_link_collision_diagnosis(body, link1, body, link2)
-                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
-
-                return True
-
-        # body's link - attached bodies collision
-        for body_links, at_body in check_link_attach_body_pairs:
-            if link_pairs_collision(body, body_links, at_body):
-                if diagnosis:
-                    print('body - attachment collision!')
-                    cr = link_pairs_collision_diagnosis(body, body_links, at_body)
-                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
-                return True
-
-        # body - body collision
-        if any(pairwise_collision(*pair, **kwargs) for pair in check_body_pairs):
-            if diagnosis:
-                print('body - body collision!')
-                for pair in check_body_pairs:
-                    cr = pairwise_collision_diagnosis(*pair, **kwargs)
-                    draw_collision_diagnosis(cr, viz_last_duration=viz_last_duration)
-            return True
-        else:
-            return False
-
-    return collision_fn
 
 
 def check_ee_element_collision(ee_body, way_points, phi, theta, exist_e_body=None, static_bodies=[], in_print_collision_obj=[]):
@@ -531,8 +461,6 @@ def extract_file_name(str_key):
     key_sep = str_key.split('.')
     return key_sep[0]
 
-def color_print(msg):
-    print('\x1b[6;30;43m' + msg + '\x1b[0m')
 
 def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
     """get the best solution based on closeness to the q_guess and weighted joint diff

@@ -2,3 +2,5 @@ numpy
 pybullet
 ikfast_pybind
 compas_fab
+pddlstream
+pybullet_planning

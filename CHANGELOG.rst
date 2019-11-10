@@ -13,10 +13,15 @@ Unreleased
 **Added**
 * cartesian process class for modeling general linear movement in the workspace
 * ladder graph interface using the Cartesian process class
+* `Trajectory` class for modeling result trajectory in different contexts (inherited classes)
+* `display_trajectories` for extrusion
+* `Command` class, useful for modeling and collision recording, not in used now
 
 **Changed**
 
 **Removed**
+* `assembly_datastructure`
+* the old `extrusion.run` module, moved to the test file
 
 **Fixed**
 

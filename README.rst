@@ -8,8 +8,8 @@ pychoreo
     :target: https://github.com/yijiangh/pychoreo/blob/master/LICENSE
     :alt: License MIT
 
-.. image:: https://travis-ci.org/yijiangh/pychoreo.svg?branch=master
-    :target: https://travis-ci.org/yijiangh/pychoreo
+.. image:: https://travis-ci.com/yijiangh/pychoreo.svg?branch=dev
+    :target: https://travis-ci.com/yijiangh/pychoreo
     :alt: Travis CI
 
 .. end-badges
@@ -23,8 +23,11 @@ pychoreo
     :target: http://www.youtube.com/watch?feature=player_embedded&v=Vv7dEB8T_Jg
     :alt: Voronoi extrusion video
 
-:pushpin: In the summer of 2019, *pychoreo* will be integrated into the `compas_fab <https://github.com/compas-dev/compas_fab>`_ infrastructure. Stay tuned! :beers:
-    The ROS implementation of choreo can be found here: `choreo <https://github.com/yijiangh/choreo>`_.
+**Note** :pushpin:
+
+- In the summer of 2019, *pychoreo* will be integrated into the `compas_fab <https://github.com/compas-dev/compas_fab>`_ infrastructure. Stay tuned! :beers:
+- The ROS implementation of choreo can be found here: `choreo <https://github.com/yijiangh/choreo>`_.
+
 
 Main features
 -------------
