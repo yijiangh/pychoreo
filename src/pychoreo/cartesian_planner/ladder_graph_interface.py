@@ -1,3 +1,4 @@
+import warnings
 from pybullet_planning import WorldSaver
 
 from pychoreo.cartesian_planner.ladder_graph import LadderGraph, EdgeBuilder
@@ -6,7 +7,7 @@ from pychoreo.cartesian_planner.dag_search import DAGSearch
 from pychoreo.cartesian_planner.postprocessing import divide_list_chunks
 from pychoreo.process_model.trajectory import Trajectory
 
-def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, viz_inspect=False):
+def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, viz_inspect=False, warning_pause=True):
     # input can be list of lists
     # these will be concatenated horizontally under same parametrization
     # TODO: multiple cartesian processes share the same EE pose gen
@@ -91,9 +92,8 @@ def solve_ladder_graph_from_cartesian_processes(cart_proc_list, verbose=False, v
             graph_dict[cp_id] = vertical_graph
             if verbose: print('#{}-{} #{} pose families formed.'.format(cp_id, cart_proc, vertical_subgraph_cnt))
         else:
-            print('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc))
-            wait_for_user()
-
+            warnings.warn('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc))
+            if warning_pause : wait_for_user()
     world_saver.restore()
 
     # * horizontally concatenate the graphs

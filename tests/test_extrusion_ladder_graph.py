@@ -30,9 +30,27 @@ from compas.robots import RobotModel
 from compas_fab.robots import Robot as RobotClass
 from compas_fab.robots import RobotSemantics
 
-def get_test_data(file_path):
+@pytest.fixture
+def problem():
+    # return 'four-frame'
+    return 'simple_frame'
+
+def get_problem_path(problem):
+    EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
+    EXTRUSION_FILENAMES = {
+        'topopt-100': 'topopt-100_S1_03-14-2019_w_layer.json',
+        'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
+        'four-frame': 'four-frame.json',
+        'simple_frame': 'simple_frame.json',
+    }
+    EXTRUSION_SEQ_FILENAMES = {
+        'four-frame': 'four-frame_solution_regression-z.json',
+        'simple_frame': 'simple_frame_solution_regression-z.json',
+    }
     here = os.path.dirname(__file__)
-    return os.path.join(here, 'test_data', file_path)
+    assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES
+    return os.path.join(EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[problem]), \
+           os.path.join(here, 'test_data', EXTRUSION_SEQ_FILENAMES[problem])
 
 def get_robot_data():
     URDF_PATH = 'models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -127,47 +145,51 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
         cart_traj_dict[element] = cart_process
     return cart_traj_dict
 
-
-def test_extrusion_ladder_graph(viewer):
-    # create robot and pb environment
+def test_extrusion_ladder_graph(problem, viewer):
+    # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
         (workspace_urdf, workspace_robot_disabled_link_names) = get_robot_data()
     connect(use_gui=viewer)
-    robot = load_pybullet(robot_urdf, fixed_base=True)
-    workspace = load_pybullet(workspace_urdf, fixed_base=True)
+    with HideOutput():
+        robot = load_pybullet(robot_urdf, fixed_base=True)
+        workspace = load_pybullet(workspace_urdf, fixed_base=True)
     ik_fn = ikfast_kuka_kr6_r900.get_ik
 
-    # tool TCP from flange (tool0)
+    # * tool TCP from flange (tool0)
     root_link = link_from_name(robot, tool_root_link_name)
-    # tool_body = clone_body(robot, links=tool_links, visual=False, collision=True)
     tool_link = link_from_name(robot, ee_link_name)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
-    # load shape (get nodal positions)
-    # file_path = pychoreo_examples.get_data('assembly_instances/extrusion/simple_frame.json')
-    file_path = pychoreo_examples.get_data('assembly_instances/extrusion/four-frame.json')
-    elements, node_points, ground_nodes = load_extrusion(file_path)
+    # * get problem & pre-computed json file paths
+    file_path, seq_file_path = get_problem_path(problem)
 
-    # create element bodies (collision geometries)
+    # * load shape (get nodal positions)
+    elements, node_points, ground_nodes = load_extrusion(file_path)
+    assert all(isinstance(e, tuple) and len(e) == 2 for e in elements)
+    assert all(isinstance(pt, np.ndarray) and len(pt) == 3 for pt in node_points)
+    assert all(isinstance(gn, int) for gn in ground_nodes)
+
+    # * create element bodies (collision geometries)
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         element_bodies = dict(zip(elements,
             create_elements_bodies(node_points, elements, radius=0.001, shrink=0.008)))
+        assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
     cart_process_dict = build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_joint_names,
         base_link_name, tool_from_root, viz_step=False)
 
     # load precomputed sequence
-    # seq_file_path = get_test_data('simple_frame_solution_regression-z.json')
-    seq_file_path = get_test_data('four-frame_solution_regression-z.json')
     with open(seq_file_path, 'r') as f:
         seq_data = json.loads(f.read())
     element_sequence = [tuple(e) for e in seq_data['plan']]
+    assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
     # TODO: not implemented yet
     reverse_flags = max_valence_extrusion_direction_routing(element_sequence, elements, ground_nodes)
     assert isinstance(reverse_flags, list)
+    assert all(isinstance(flag, bool) for flag in reverse_flags)
 
     sample_time=2
     roll_disc = 10
@@ -198,6 +220,7 @@ def test_extrusion_ladder_graph(viewer):
                 disabled_self_collision_link_names=disabled_self_collision_link_names)
 
         assert isinstance(cart_process_seq, list)
+        assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
         assert all([cart.element_identifier == e for cart, e in zip(cart_process_seq, element_sequence)])
 
         # * draw the pruned EE direction set
@@ -206,15 +229,23 @@ def test_extrusion_ladder_graph(viewer):
             set_pose(ee_body, unit_pose())
             for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
             draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-                                    line_width=10, direction_len=0.005, time_step=0.5)
+                                    line_width=5, direction_len=0.005, time_step=0.5)
 
     with LockRenderer():
-        cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True)
-        # extract trajectory from CartProcesses
+        cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True, warning_pause=False)
+        assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
+        assert all(cp.trajectory is not None for cp in cart_process_seq), 'not all cartesian processes have found a plan!'
+
+        # TODO: we can do reverse processing here?
+
+        # * extract trajectory from CartProcesses
         trajs = [PrintTrajectory.from_trajectory(cp.trajectory, cp.element_identifier, reverse_flags[cp_id]) \
             for cp_id, cp in enumerate(cart_process_seq) if cp.trajectory]
 
     # * transition motion planning between extrusions
+
+
+    # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()
     disconnect()
 

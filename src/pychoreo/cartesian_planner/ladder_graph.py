@@ -27,7 +27,8 @@ class LadderGraphRung(object):
 
 class LadderGraph(object):
     def __init__(self, dof):
-        assert(dof != 0)
+        if dof <= 0 or not isinstance(dof, int):
+            raise ValueError('dof of the robot must be an integer >= 1!')
         self.dof = dof
         self.rungs = []
 

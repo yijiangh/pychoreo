@@ -11,5 +11,4 @@ dependencies:
    - pip:
     #  - pybullet_planning # TODO: not necessarily tracking the latest dev branch, use this later
      - git+https://github.com/yijiangh/compas_fab.git@feature/pybullet_backend#egg=compas_fab
-     - git+https://github.com/yijiangh/pddlstream.git@feature/pip_install#egg=pddlstream
      - git+https://github.com/yijiangh/pybullet_planning.git@dev#egg=pybullet_planning

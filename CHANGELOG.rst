@@ -16,6 +16,7 @@ Unreleased
 * `Trajectory` class for modeling result trajectory in different contexts (inherited classes)
 * `display_trajectories` for extrusion
 * `Command` class, useful for modeling and collision recording, not in used now
+* some simple exceptions added for `LadderGraph` and `DAGSearch`
 
 **Changed**
 
