@@ -1,3 +1,5 @@
+import warnings
+
 from pybullet_planning import INF
 from pychoreo.cartesian_planner.ladder_graph import LadderGraph
 
@@ -21,6 +23,8 @@ class SolutionRung(object):
 class DAGSearch(object):
     def __init__(self, graph):
         assert(isinstance(graph, LadderGraph))
+        if graph.size == 0:
+            raise ValueError('input ladder graph is empty!')
         self.graph = graph
         self.solution = [SolutionRung() for i in range(graph.get_rungs_size())]
 
@@ -31,6 +35,10 @@ class DAGSearch(object):
             self.solution[i].distance = [0] * n_verts
             self.solution[i].predecessor = [0] * n_verts
 
+    @classmethod
+    def from_ladder_graph(cls, graph):
+        return cls(graph)
+
     def distance(self, r_id, v_id):
         return self.solution[r_id].distance[v_id]
 
@@ -39,11 +47,13 @@ class DAGSearch(object):
 
     def run(self):
         """forward cost propagation"""
-        # TODO: add st_conf cost to SolutionRung 0
-        # first rung init to 0
-        self.solution[0].distance = [0] * len(self.solution[0])
+        if len(self.solution) == 0:
+            raise ValueError('The initial solution is empty!')
 
-        # other rungs init to inf
+        # TODO: add st_conf cost to SolutionRung 0
+        # * first rung init to 0
+        self.solution[0].distance = [0] * len(self.solution[0])
+        # * other rungs init to inf
         for j in range(1, len(self.solution)):
             self.solution[j].distance = [INF] * len(self.solution[j])
 
@@ -63,6 +73,10 @@ class DAGSearch(object):
         return min(self.solution[-1].distance)
 
     def shortest_path(self):
+        if len(self.solution) == 0:
+            # TODO: more detailed checks
+            raise ValueError('The initial solution is empty!')
+
         _, min_val_id = self.solution[-1].extract_min()
         path_idx = [0] * len(self.solution)
 

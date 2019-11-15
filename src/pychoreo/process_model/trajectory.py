@@ -3,11 +3,20 @@ from pybullet_planning import has_link, link_from_name, get_link_pose
 from pybullet_planning import set_joint_positions
 
 class Trajectory(object):
-    def __init__(self, robot, joints, traj_path):
+    def __init__(self, robot, joints, traj_path, tag=''):
         self.robot = robot
         self.joints = joints
         self.traj_path = traj_path
         self.path_from_link = {}
+        self._tag = ''
+
+    @property
+    def tag(self):
+        return self._tag
+
+    @tag.setter
+    def tag(self, tag_):
+        self._tag = tag_
 
     def get_link_path(self, link_name):
         # This is essentially doing forward kinematics for the specified link

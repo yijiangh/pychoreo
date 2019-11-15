@@ -12,6 +12,11 @@ pychoreo
     :target: https://travis-ci.com/yijiangh/pychoreo
     :alt: Travis CI
 
+.. image:: https://coveralls.io/repos/github/yijiangh/pychoreo/badge.svg?branch=dev
+    :target: https://coveralls.io/github/yijiangh/pychoreo?branch=dev
+    :alt: Coveralls
+
+
 .. end-badges
 
 .. Write project description

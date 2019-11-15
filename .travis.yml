@@ -43,7 +43,10 @@ install:
 #   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dep1 dep2 ...
 
 script:
-- invoke test
+  - invoke test
 # - if [[ "$TRAVIS_PYTHON_VERSION" == "3.6" ]]; then
 #     invoke docs;
 #   fi
+
+after_success:
+  - coveralls
