@@ -61,34 +61,27 @@ def max_valence_extrusion_direction_routing(element_sequence, elements, grounded
 
     return reverse_flags
 
-def add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict, element_seq, element_bodies,
-        domain_size, ee_pose_map_fn, ee_body, yaw_sample_size=10, reverse_flags=None, sample_time=5,
-        tool_from_root=None, workspace_bodies=[], ws_disabled_body_link_names={}, static_obstacles=[],
-        self_collisions=True, disabled_self_collision_link_names=[], pos_step_size=0.003, verbose=False):
+def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
+        element_seq, element_bodies,
+        domain_size, ee_pose_map_fn, ee_body,
+        yaw_sample_size=10, sample_time=5, linear_step_size=0.003, tool_from_root=None,
+        self_collisions=True, disabled_collisions={},
+        obstacles=[], extra_disabled_collisions={},
+        verbose=False):
 
     assert len(cart_process_dict) == len(element_seq)
     assert len(element_bodies) == len(element_seq)
-    if reverse_flags:
-        assert len(reverse_flags) == len(element_seq)
 
-    # converting link names to robot pb links
-    ik_joints = joints_from_names(robot, ik_joint_names)
-    disabled_collisions = get_disabled_collisions(robot, disabled_self_collision_link_names)
-    ws_disabled_collisions = set()
-    for ws_body in workspace_bodies:
-        ws_disabled_collisions.update(get_body_body_disabled_collisions(robot, ws_body, ws_disabled_body_link_names))
-    # print(disabled_collisions)
-    # print(ws_disabled_collisions)
-
-    built_obstacles = copy(static_obstacles)
+    built_obstacles = copy(obstacles)
     e_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
     for element in element_seq:
         if verbose : print('checking E#{}'.format(element))
         st_time = time.time()
         while time.time() - st_time < sample_time:
             e_fmaps[element] = prune_ee_feasible_directions(cart_process_dict[element],
-                                    e_fmaps[element], ee_pose_map_fn, ee_body, tool_from_root=tool_from_root,
-                                    collision_objects=built_obstacles, workspace_bodies=workspace_bodies, check_ik=False)
+                                    e_fmaps[element], ee_pose_map_fn, ee_body,
+                                    obstacles=obstacles,
+                                    tool_from_root=tool_from_root, check_ik=False)
             if sum(e_fmaps[element]) > 0:
                 break
         assert sum(e_fmaps[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
@@ -101,7 +94,7 @@ def add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict, element
 
         enum_gen_fn = get_enumeration_pose_generator(candidate_poses)
         ee_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].path_points,
-            enum_gen_fn, interpolate_poses, pos_step_size=pos_step_size)
+            enum_gen_fn, interpolate_poses, pos_step_size=linear_step_size)
         cart_process_dict[element].ee_pose_gen_fn = ee_pose_gen_fn
 
         # TODO: reverse info
@@ -109,9 +102,7 @@ def add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict, element
         # use sequenced elements for collision objects
         built_obstacles = built_obstacles + [element_bodies[element]]
         cart_process_dict[element].collision_fn = get_collision_fn(robot, ik_joints, built_obstacles,
-                                         attachments=[], self_collisions=self_collisions,
-                                         disabled_collisions=disabled_collisions,
-                                         workspace_bodies=workspace_bodies,
-                                         workspace_disabled_collisions=ws_disabled_collisions,
-                                         custom_limits={})
+                                                                   attachments=[], self_collisions=self_collisions,
+                                                                   disabled_collisions=disabled_collisions,
+                                                                   custom_limits={})
     return [cart_process_dict[e] for e in element_seq], e_fmaps

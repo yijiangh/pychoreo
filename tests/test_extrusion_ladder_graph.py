@@ -5,19 +5,19 @@ import numpy as np
 import pytest
 from itertools import chain
 
+from pybullet_planning import INF
 from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
     reset_simulation, disconnect
 from pybullet_planning import interpolate_poses, multiply, unit_pose, get_relative_pose
 from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
-    draw_pose, set_pose, set_joint_positions
+    draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions
 
 from pychoreo.process_model.cartesian_process import CartesianProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
 from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
-# from pychoreo.transition_planner.motion_planner_interface import solve_transition_between_cartesian_processes
 
 import pychoreo_examples
 from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies
@@ -25,6 +25,7 @@ from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw
 from pychoreo_examples.extrusion.stream import extrusion_ee_pose_gen_fn
 from pychoreo_examples.extrusion.utils import max_valence_extrusion_direction_routing, add_collision_fns_from_seq
 from pychoreo_examples.extrusion.trajectory import PrintTrajectory
+from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
 import ikfast_kuka_kr6_r900
 
@@ -157,8 +158,17 @@ def test_extrusion_ladder_graph(problem, viewer):
         robot = load_pybullet(robot_urdf, fixed_base=True)
         workspace = load_pybullet(workspace_urdf, fixed_base=True)
     ik_fn = ikfast_kuka_kr6_r900.get_ik
+    ik_joints = joints_from_names(robot, ik_joint_names)
 
-    # * tool TCP from flange (tool0)
+    # * printout bodies in the scene information
+    # dump_world()
+    # if has_gui() : wait_for_user()
+
+    initial_conf = [0.08, -1.57, 1.74, 0.08, 0.17, -0.08]
+    set_joint_positions(robot, ik_joints, initial_conf)
+
+    # * get tool TCP from flange (ee_link) transformation
+    # this is for the robot that has end effector specified in its URDF
     root_link = link_from_name(robot, tool_root_link_name)
     tool_link = link_from_name(robot, ee_link_name)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
@@ -195,11 +205,18 @@ def test_extrusion_ladder_graph(problem, viewer):
     assert isinstance(reverse_flags, list)
     assert all(isinstance(flag, bool) for flag in reverse_flags)
 
-    sample_time=2
+    sample_time = 5
     roll_disc = 10
     pitch_disc = 10
-    yaw_sample_size = 6
+    yaw_sample_size = 10
+    linear_step_size = 0.003 # mm
     domain_size = roll_disc * pitch_disc
+
+    # * construct ignored body-body links for collision checking
+    # in this case, including self-collision between links of the robot
+    disabled_self_collisions = get_disabled_collisions(robot, disabled_self_collision_link_names)
+    # and links between the robot and the workspace (e.g. robot_base_link to base_plate)
+    extra_disabled_collisions = get_body_body_disabled_collisions(robot, workspace, workspace_robot_disabled_link_names)
 
     def get_ee_pose_map_fn(roll_disc, pitch_disc):
         def ee_pose_map_fn(id, yaw=None):
@@ -217,11 +234,13 @@ def test_extrusion_ladder_graph(problem, viewer):
 
         # * building collision function based on the given sequence
         with LockRenderer():
-            cart_process_seq, e_fmaps = add_collision_fns_from_seq(robot, ik_joint_names, cart_process_dict,
-                element_sequence, element_bodies, domain_size, ee_pose_map_fn, ee_body, sample_time=sample_time,
-                yaw_sample_size=yaw_sample_size, reverse_flags=reverse_flags, tool_from_root=tool_from_root,
-                workspace_bodies=[workspace], ws_disabled_body_link_names=workspace_robot_disabled_link_names,
-                disabled_self_collision_link_names=disabled_self_collision_link_names)
+            cart_process_seq, e_fmaps = add_collision_fns_from_seq(
+                robot, ik_joints, cart_process_dict,
+                element_sequence, element_bodies,
+                domain_size, ee_pose_map_fn, ee_body,
+                sample_time=sample_time, yaw_sample_size=yaw_sample_size, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
+                self_collisions=True, disabled_collisions=disabled_self_collisions,
+                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions)
 
         assert isinstance(cart_process_seq, list)
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
@@ -233,7 +252,7 @@ def test_extrusion_ladder_graph(problem, viewer):
             set_pose(ee_body, unit_pose())
             for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
             draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-                                    line_width=5, direction_len=0.005, time_step=0.5)
+                                    line_width=5, direction_len=0.005, time_step=INF)
 
     with LockRenderer():
         cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True, warning_pause=False)
@@ -250,19 +269,21 @@ def test_extrusion_ladder_graph(problem, viewer):
     full_trajs = print_trajs
 
     # # * transition motion planning between extrusions
-    # include_return2idle = True
-    # transition_traj = solve_transition_between_cartesian_processes(print_trajs, start_conf=None, return_start=include_return2idle)
-    # assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
-    # if include_return2idle:
-    #     assert len(transition_traj)-1 == len(print_trajs)
-    # else:
-    #     assert len(transition_traj) == len(print_trajs)
+    return2idle = True
+    transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
+                                                                   disabled_collisions=disabled_self_collisions,
+                                                                   obstacles=[], return2idle=return2idle)
+    assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
+    if return2idle:
+        assert len(transition_traj)-1 == len(print_trajs)
+    else:
+        assert len(transition_traj) == len(print_trajs)
 
     # # * weave the Cartesian and transition processses together
-    # if include_return2idle:
-    #     full_trajs = list(chain.from_iterable(zip(transition_traj[:-1], print_trajs))) + [transition_traj[-1]]
-    # else:
-    #     full_trajs = list(chain.from_iterable(zip(transition_traj, print_trajs)))
+    if return2idle:
+        full_trajs = list(chain.from_iterable(zip(transition_traj[:-1], print_trajs))) + [transition_traj[-1]]
+    else:
+        full_trajs = list(chain.from_iterable(zip(transition_traj, print_trajs)))
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()
@@ -271,4 +292,4 @@ def test_extrusion_ladder_graph(problem, viewer):
     # visualize plan
     if viewer:
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
-                             workspace_urdf=workspace_urdf, animate=True, time_step=0.02)
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.02, tr_time_step=0.05)

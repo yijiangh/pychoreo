@@ -12,14 +12,11 @@ class LadderGraphEdge(object):
 
 
 class LadderGraphRung(object):
-    def __init__(self, id=None, data=[], edges=[], collision_fn=None):
+    def __init__(self, id=None, data=[], edges=[]):
         self.id = id
         # joint_data: joint values are stored in one contiguous list
         self.data = data
         self.edges = edges
-
-        #TODO: collision bodies or collision fn
-        self.collision_fn = collision_fn
 
     def __repr__(self):
         return 'id {0}, data {1}, edge num {2}'.format(self.id, len(self.data), len(self.edges))

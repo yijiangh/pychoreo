@@ -61,6 +61,8 @@ class CartesianProcess(object):
         self._element_id = element_identifier
         self._trajectory = None
 
+        # TODO: add a trigger to "renew" the sample ee iterator in case we want to sample the poses again
+
     @property
     def robot(self):
         return self._robot
@@ -106,6 +108,12 @@ class CartesianProcess(object):
 
     @property
     def element_identifier(self):
+        """the identifier of the element involved with the Cartesian process, usually indices of element
+        in a list or dict. For example, in the case of element extrusion, we use (start_node_id, end_node_id)
+        as the element identifier, which can be directly fed into the dict of element bodies to get the collision
+        bodies.
+
+        """
         return self._element_id
 
     @element_identifier.setter
@@ -190,12 +198,13 @@ class CartesianProcess(object):
 ##################################################
 
 def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_fn, ee_body,
-    tool_from_root=None, collision_objects=[], workspace_bodies=[], workspace_disabled_collisions={}, check_ik=False):
+                                 self_collisions=True, disabled_collisions={},
+                                 obstacles=[], extra_disabled_collisions={},
+                                 tool_from_root=None, check_ik=False):
     # only take the positional part
     way_points = [p[0] for p in cartesian_process.sample_ee_poses()]
-    ee_collision_fn = get_floating_body_collision_fn(ee_body, collision_objects,
-                                       workspace_bodies=workspace_bodies,
-                                       workspace_disabled_collisions=workspace_disabled_collisions)
+    ee_collision_fn = get_floating_body_collision_fn(ee_body, obstacles,
+                                                     disabled_collisions=disabled_collisions)
 
     fmap_ids = list(range(len(free_pose_map)))
     random.shuffle(fmap_ids)

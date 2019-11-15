@@ -11,7 +11,7 @@ from pybullet_planning import interpolate_poses, multiply, unit_pose, get_relati
 from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
-    draw_pose, set_pose, set_joint_positions
+    draw_pose, set_pose, set_joint_positions, dump_world, create_obj
 
 from pychoreo.process_model.cartesian_process import CartesianProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
@@ -66,6 +66,12 @@ def get_robot_data():
     return (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
            (workspace_urdf, workspace_robot_disabled_link_names)
 
+def load_extrusion_end_effector():
+    here = os.path.dirname(__file__)
+    with HideOutput():
+        ee = create_obj(os.path.join(here, 'test_data', 'dms_bar_gripper.obj'))
+    return ee
+
 @pytest.mark.pnp
 def test_picknplace_ladder_graph(problem, viewer):
     # * create robot and pb environment
@@ -89,7 +95,7 @@ def test_picknplace_ladder_graph(problem, viewer):
 
     ik_fn = ikfast_ur5.get_ik
 
-    # * tool TCP from flange (tool0)
+    # * create tool and tool TCP from flange (tool0) transformation
     root_link = link_from_name(robot, tool_root_link_name)
     if ee_link_name:
         tool_link = link_from_name(robot, ee_link_name)
@@ -99,7 +105,10 @@ def test_picknplace_ladder_graph(problem, viewer):
         # TODO: create two joints: ee_base_to_tcp, ee_to_robot
         # attach ee_link (w/ collision geometry) to tool0
         # attach ee_tcp_link (no geometry) to tool0
+        ee_body = load_extrusion_end_effector()
         ee_link_name = 'ee_tcp_link'
+
+    dump_world()
 
     # * get problem & pre-computed json file paths
     pkg_path = get_problem_path(problem)
