@@ -14,7 +14,7 @@ from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
     draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions
 
-from pychoreo.process_model.cartesian_process import CartesianProcess
+from pychoreo.process_model.cartesian_process import CartesianProcess, CartesianSubProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
 from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
@@ -114,36 +114,42 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
 
         # an example for EE pose random generation, yaw (rotation around the direction axis) is set to 0
         random_dir_gen = get_random_direction_generator()
-        ee_pose_gen_fn = extrusion_ee_pose_gen_fn(path_pts, random_dir_gen, interpolate_poses, pos_step_size=0.003)
+        ee_pose_gen_fn = extrusion_ee_pose_gen_fn(path_pts, random_dir_gen, interpolate_poses, approach_distance=0.01, pos_step_size=0.003)
+
+        # build three sub-processes: approach, extrusion, retreat
+        extrusion_sub_procs = [CartesianSubProcess(sub_process_name='approach-extrude'),
+                               CartesianSubProcess(sub_process_name='extrude'),
+                               CartesianSubProcess(sub_process_name='extrude-retreat')]
 
         cart_process = CartesianProcess(process_name=process_name,
             robot=robot, ik_joint_names=ik_joint_names,
-            path_points=path_pts,
+            sub_process_list=extrusion_sub_procs,
             ee_pose_gen_fn=ee_pose_gen_fn, sample_ik_fn=sample_ik_fn,
             element_identifier=element)
 
         ee_poses = cart_process.sample_ee_poses()
         if viz_step:
-            print('#{}'.format(element))
-            for ee_p in ee_poses:
-                yaw = random.uniform(-np.pi, np.pi)
-                ee_p = multiply(ee_p, Pose(euler=Euler(yaw=yaw)), tool_from_root)
-                set_pose(ee_body, ee_p)
-                if has_gui(): wait_for_user()
+            for sp_id, sp in enumerate(ee_poses):
+                print('E #{} - sub process #{}'.format(element, sp_id))
+                for ee_p in sp:
+                    yaw = random.uniform(-np.pi, np.pi)
+                    ee_p = multiply(ee_p, Pose(euler=Euler(yaw=yaw)), tool_from_root)
+                    set_pose(ee_body, ee_p)
+                    if has_gui(): wait_for_user()
 
-        with pytest.raises(NotImplementedError):
-            # this should raise an not implemented error since we haven't specify the collision function yet
-            ik_sols = cart_process.get_ik_sols(ee_poses, check_collision=True)
-            if all([not sol for sol in ik_sols]):
+        # this should raise an not implemented error since we haven't specify the collision function yet
+        for sp in cart_process.sub_process_list:
+            with pytest.raises(NotImplementedError):
                 conf = [0] * 6
-                cart_process.collision_fn(conf)
+                sp.collision_fn(conf)
 
         ik_sols = cart_process.get_ik_sols(ee_poses, check_collision=False)
         if viz_step:
-            for jt_sol in ik_sols:
-                for jts in jt_sol:
-                    set_joint_positions(robot, ik_joints, jts)
-                    if has_gui(): wait_for_user()
+            for sp_id, sp_jt_sols in ik_sols.items():
+                for jt_sols in sp_jt_sols:
+                    for jts in jt_sols:
+                        set_joint_positions(robot, ik_joints, jts)
+                        if has_gui(): wait_for_user()
 
         cart_traj_dict[element] = cart_process
     return cart_traj_dict
@@ -192,7 +198,9 @@ def test_extrusion_ladder_graph(problem, viewer):
 
     # * create cartesian processes without a sequence being given, with random pose generators
     cart_process_dict = build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_joint_names,
-        base_link_name, tool_from_root, viz_step=False)
+        base_link_name, tool_from_root, viz_step=True)
+
+    return
 
     # * load precomputed sequence
     with open(seq_file_path, 'r') as f:
