@@ -16,7 +16,6 @@ pychoreo
     :target: https://coveralls.io/github/yijiangh/pychoreo?branch=dev
     :alt: Coveralls
 
-
 .. end-badges
 
 .. Write project description
