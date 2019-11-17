@@ -198,7 +198,7 @@ def release(ctx, release_type, bump_version=False):
         if bump_version:
             ctx.run('bumpversion %s --verbose' % release_type)
         ctx.run('invoke docs test')
-        ctx.run('python setup.py clean --all sdist') #bdist_wheel
+        ctx.run('python setup.py clean --all sdist bdist_wheel')
         if confirm('You are about to upload the release to pypi.org. Are you sure? [y/N]'):
             files = ['dist/*.whl', 'dist/*.gz', 'dist/*.zip']
             dist_files = ' '.join([pattern for f in files for pattern in glob.glob(f)])

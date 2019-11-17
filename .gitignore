@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# C extensions
+*.so
+
 # Distribution / packaging
 .Python
 env/
@@ -100,15 +103,3 @@ ENV/
 
 # Visual Studio Code
 .vscode/
-
-# ------------------------------------------------------------------------------
-# compas
-# ------------------------------------------------------------------------------
-
-docs/reference/generated/
-
-*.3dmbak
-*.rhl
-
-temp/**
-!temp/.gitkeep
