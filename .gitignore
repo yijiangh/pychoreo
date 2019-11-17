@@ -27,3 +27,4 @@ dist
 .ropeproject
 
 .vscode
+.coverage
