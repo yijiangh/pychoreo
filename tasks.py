@@ -194,29 +194,21 @@ def release(ctx, release_type, bump_version=False):
     if release_type not in ('patch', 'minor', 'major'):
         raise Exit('The release type parameter is invalid.\nMust be one of: major, minor, patch')
 
-    if bump_version:
-        ctx.run('bumpversion %s --verbose' % release_type)
+    with chdir(BASE_FOLDER):
+        if bump_version:
+            ctx.run('bumpversion %s --verbose' % release_type)
+        ctx.run('invoke docs test')
+        ctx.run('python setup.py clean --all sdist bdist_wheel')
+        if confirm('You are about to upload the release to pypi.org. Are you sure? [y/N]'):
+            files = ['dist/*.whl', 'dist/*.gz', 'dist/*.zip']
+            dist_files = ' '.join([pattern for f in files for pattern in glob.glob(f)])
 
-    # Run checks
-    # ctx.run('invoke docs test')
-    ctx.run('invoke check test')
-
-    # Bump version and git tag it
-    ctx.run('bump2version %s --verbose' % release_type)
-
-    # Build project
-    ctx.run('python setup.py clean --all sdist bdist_wheel')
-
-    if confirm('You are about to upload the release to pypi.org. Are you sure? [y/N]'):
-        files = ['dist/*.whl', 'dist/*.gz', 'dist/*.zip']
-        dist_files = ' '.join([pattern for f in files for pattern in glob.glob(f)])
-
-        if len(dist_files):
-            ctx.run('twine upload --skip-existing %s' % dist_files)
+            if len(dist_files):
+                ctx.run('twine upload --skip-existing %s' % dist_files)
+            else:
+                raise Exit('No files found to release')
         else:
-            raise Exit('No files found to release')
-    else:
-        raise Exit('Aborted release')
+            raise Exit('Aborted release')
 
 
 @contextlib.contextmanager
