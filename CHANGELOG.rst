@@ -16,8 +16,11 @@ Unreleased
 * ladder graph interface using the Cartesian process class
 * `Trajectory` class for modeling result trajectory in different contexts (inherited classes)
 * `display_trajectories` for extrusion
-* `Command` class, useful for modeling and collision recording, not in used now
 * some simple exceptions added for `LadderGraph` and `DAGSearch`
+* subprocess modeling to have a more detailed control over Cartesian process modeling
+* add `exhaust_iter` method to `CartisianProcess` which resets the generator
+* add template class `GenFn` for generating functions
+* add `PrintBufferTrajectory` to model approach/retreat trajectories
 
 **Changed**
 
