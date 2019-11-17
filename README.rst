@@ -21,8 +21,7 @@ pychoreo
 
 .. Write project description
 
-*pychoreo* is a sequence and motion planning engine that allow you
-    to print the following cool structures (and many more!) with ease:
+*pychoreo* is a sequence and motion planning engine that allow you to print the following cool structures (and many more!) with ease:
 
 .. image:: http://img.youtube.com/vi/Vv7dEB8T_Jg/0.jpg
     :target: http://www.youtube.com/watch?feature=player_embedded&v=Vv7dEB8T_Jg

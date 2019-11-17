@@ -14,8 +14,9 @@ from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
     draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions
 
-from pychoreo.process_model.cartesian_process import CartesianProcess
+from pychoreo.process_model.cartesian_process import CartesianProcess, CartesianSubProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
+from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
 from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
 
@@ -24,7 +25,7 @@ from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_
 from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw_extrusion_sequence, display_trajectories
 from pychoreo_examples.extrusion.stream import extrusion_ee_pose_gen_fn
 from pychoreo_examples.extrusion.utils import max_valence_extrusion_direction_routing, add_collision_fns_from_seq
-from pychoreo_examples.extrusion.trajectory import PrintTrajectory
+from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
 from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
 import ikfast_kuka_kr6_r900
@@ -114,36 +115,42 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
 
         # an example for EE pose random generation, yaw (rotation around the direction axis) is set to 0
         random_dir_gen = get_random_direction_generator()
-        ee_pose_gen_fn = extrusion_ee_pose_gen_fn(path_pts, random_dir_gen, interpolate_poses, pos_step_size=0.003)
+        ee_pose_gen_fn = CartesianPoseGenFn(path_pts, extrusion_ee_pose_gen_fn(path_pts, random_dir_gen, interpolate_poses, approach_distance=0.01, pos_step_size=0.003))
+
+        # build three sub-processes: approach, extrusion, retreat
+        extrusion_sub_procs = [CartesianSubProcess(sub_process_name='approach-extrude'),
+                               CartesianSubProcess(sub_process_name='extrude'),
+                               CartesianSubProcess(sub_process_name='extrude-retreat')]
 
         cart_process = CartesianProcess(process_name=process_name,
             robot=robot, ik_joint_names=ik_joint_names,
-            path_points=path_pts,
+            sub_process_list=extrusion_sub_procs,
             ee_pose_gen_fn=ee_pose_gen_fn, sample_ik_fn=sample_ik_fn,
             element_identifier=element)
 
         ee_poses = cart_process.sample_ee_poses()
         if viz_step:
-            print('#{}'.format(element))
-            for ee_p in ee_poses:
-                yaw = random.uniform(-np.pi, np.pi)
-                ee_p = multiply(ee_p, Pose(euler=Euler(yaw=yaw)), tool_from_root)
-                set_pose(ee_body, ee_p)
-                if has_gui(): wait_for_user()
+            for sp_id, sp in enumerate(ee_poses):
+                print('E #{} - sub process #{}'.format(element, sp_id))
+                for ee_p in sp:
+                    yaw = random.uniform(-np.pi, np.pi)
+                    ee_p = multiply(ee_p, Pose(euler=Euler(yaw=yaw)), tool_from_root)
+                    set_pose(ee_body, ee_p)
+                    if has_gui(): wait_for_user()
 
-        with pytest.raises(NotImplementedError):
-            # this should raise an not implemented error since we haven't specify the collision function yet
-            ik_sols = cart_process.get_ik_sols(ee_poses, check_collision=True)
-            if all([not sol for sol in ik_sols]):
+        # this should raise an not implemented error since we haven't specify the collision function yet
+        for sp in cart_process.sub_process_list:
+            with pytest.raises(NotImplementedError):
                 conf = [0] * 6
-                cart_process.collision_fn(conf)
+                sp.collision_fn(conf)
 
         ik_sols = cart_process.get_ik_sols(ee_poses, check_collision=False)
         if viz_step:
-            for jt_sol in ik_sols:
-                for jts in jt_sol:
-                    set_joint_positions(robot, ik_joints, jts)
-                    if has_gui(): wait_for_user()
+            for sp_id, sp_jt_sols in ik_sols.items():
+                for jt_sols in sp_jt_sols:
+                    for jts in jt_sols:
+                        set_joint_positions(robot, ik_joints, jts)
+                        if has_gui(): wait_for_user()
 
         cart_traj_dict[element] = cart_process
     return cart_traj_dict
@@ -205,10 +212,10 @@ def test_extrusion_ladder_graph(problem, viewer):
     assert isinstance(reverse_flags, list)
     assert all(isinstance(flag, bool) for flag in reverse_flags)
 
-    sample_time = 5
+    sample_time = 1
     roll_disc = 10
     pitch_disc = 10
-    yaw_sample_size = 10
+    yaw_sample_size = 5
     linear_step_size = 0.003 # mm
     domain_size = roll_disc * pitch_disc
 
@@ -233,14 +240,14 @@ def test_extrusion_ladder_graph(problem, viewer):
         ee_pose_map_fn = get_ee_pose_map_fn(roll_disc, pitch_disc)
 
         # * building collision function based on the given sequence
-        with LockRenderer():
+        with LockRenderer(False):
             cart_process_seq, e_fmaps = add_collision_fns_from_seq(
                 robot, ik_joints, cart_process_dict,
                 element_sequence, element_bodies,
                 domain_size, ee_pose_map_fn, ee_body,
                 sample_time=sample_time, yaw_sample_size=yaw_sample_size, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
                 self_collisions=True, disabled_collisions=disabled_self_collisions,
-                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions)
+                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions, verbose=True)
 
         assert isinstance(cart_process_seq, list)
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
@@ -252,18 +259,26 @@ def test_extrusion_ladder_graph(problem, viewer):
             set_pose(ee_body, unit_pose())
             for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
             draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-                                    line_width=5, direction_len=0.005, time_step=INF)
+                                    line_width=5, direction_len=0.005, time_step=0.01)
 
-    with LockRenderer():
-        cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True, warning_pause=False)
+    viz_inspect = False
+    with LockRenderer(not viz_inspect):
+        cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
-        assert all(cp.trajectory is not None for cp in cart_process_seq), 'not all cartesian processes have found a plan!'
 
         # TODO: we can do reverse processing here, instead of inside add_collision_fns_from_seq?
 
         # * extract trajectory from CartProcesses
-        print_trajs = [PrintTrajectory.from_trajectory(cp.trajectory, cp.element_identifier, reverse_flags[cp_id]) \
-                       for cp_id, cp in enumerate(cart_process_seq) if cp.trajectory]
+        print_trajs = [[] for _ in range(len(cart_process_seq))]
+        for cp_id, cp in enumerate(cart_process_seq):
+            for sp_id, sp in enumerate(cp.sub_process_list):
+                # assert sp.trajectory, '{}-{} does not have a Cartesian plan found!'.format(cp, sp)
+                if sp_id == 0:
+                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, reverse_flags[cp_id], tag='approach'))
+                elif sp_id == 1:
+                    print_trajs[cp_id].append(PrintTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, reverse_flags[cp_id]))
+                else:
+                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, reverse_flags[cp_id], tag='retreat'))
 
     # TODO get rid of this when transition planning is done
     full_trajs = print_trajs
@@ -280,10 +295,10 @@ def test_extrusion_ladder_graph(problem, viewer):
         assert len(transition_traj) == len(print_trajs)
 
     # # * weave the Cartesian and transition processses together
+    for cp_id, print_trajs in enumerate(full_trajs):
+        print_trajs.insert(0, transition_traj[cp_id])
     if return2idle:
-        full_trajs = list(chain.from_iterable(zip(transition_traj[:-1], print_trajs))) + [transition_traj[-1]]
-    else:
-        full_trajs = list(chain.from_iterable(zip(transition_traj, print_trajs)))
+        full_trajs[-1].append(transition_traj[-1])
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()

@@ -8,7 +8,8 @@ from pybullet_planning import get_link_pose, link_from_name
 from pybullet_planning import unit_pose, multiply, tform_point, point_from_pose
 from pybullet_planning import Pose, Point, Euler, INF
 
-from pychoreo_examples.extrusion.trajectory import PrintTrajectory
+from pychoreo.process_model.trajectory import MotionTrajectory
+from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
 from pychoreo_examples.extrusion.utils import is_ground
 
 ##################################################
@@ -104,44 +105,53 @@ def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, 
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
     connected_nodes = set(ground_nodes)
-    print('Trajectories num: {}'.format(len(trajectories)))
-    for i, trajectory in enumerate(trajectories):
+    for cp_id, cp_trajs in enumerate(trajectories):
         #wait_for_user()
         #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
-        for conf in trajectory.traj_path:
-            set_joint_positions(robot, ik_joints, conf)
-            # * tracing TCP to represent extrusion
-            if isinstance(trajectory, PrintTrajectory):
-                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, ee_link_name)))
-                if last_point is not None:
-                    color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
-                    handles.append(add_line(last_point, current_point, color=color))
-                last_point = current_point
-                if cart_time_step is None:
-                    wait_for_user()
+        for trajectory in cp_trajs:
+            for conf in trajectory.traj_path:
+                set_joint_positions(robot, ik_joints, conf)
+                # * tracing TCP to represent extrusion
+                if isinstance(trajectory, PrintTrajectory):
+                    current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, ee_link_name)))
+                    if last_point is not None:
+                        color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
+                        handles.append(add_line(last_point, current_point, color=color))
+                    last_point = current_point
+                    if cart_time_step is None:
+                        wait_for_user()
+                    else:
+                        # ! this seems to have a bug on windows
+                        # wait_for_duration(time_step)
+                        time.sleep(cart_time_step)
+                elif isinstance(trajectory, PrintBufferTrajectory):
+                    if cart_time_step is None:
+                        wait_for_user()
+                    else:
+                        # ! this seems to have a bug on windows
+                        # wait_for_duration(time_step)
+                        time.sleep(cart_time_step)
+                elif isinstance(trajectory, MotionTrajectory):
+                    if tr_time_step is None:
+                        wait_for_user()
+                    else:
+                        # ! this seems to have a bug on windows
+                        # wait_for_duration(time_step)
+                        time.sleep(tr_time_step)
                 else:
-                    # ! this seems to have a bug on windows
-                    # wait_for_duration(time_step)
-                    time.sleep(cart_time_step)
-            else:
-                if tr_time_step is None:
-                    wait_for_user()
-                else:
-                    # ! this seems to have a bug on windows
-                    # wait_for_duration(time_step)
-                    time.sleep(tr_time_step)
+                    raise ValueError('trajectory type not acceptable!')
 
-        # * sanity check on connectness
-        if isinstance(trajectory, PrintTrajectory):
-            is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
-            print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
-                i, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.traj_path)))
-            if not is_connected:
-                print('Warning: this element is not connected to existing partial structure!')
-                wait_for_user()
-            connected_nodes.add(trajectory.n2)
+            # * sanity check on connectness
+            if isinstance(trajectory, PrintTrajectory):
+                is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
+                print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
+                    cp_id, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.traj_path)))
+                if not is_connected:
+                    print('Warning: this element is not connected to existing partial structure!')
+                    wait_for_user()
+                connected_nodes.add(trajectory.n2)
 
     wait_for_user()
     reset_simulation()

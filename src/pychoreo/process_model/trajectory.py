@@ -38,6 +38,9 @@ class Trajectory(object):
             set_joint_positions(self.robot, self.joints, conf)
             yield
 
+    def __repr__(self):
+        return 'Traj{}|len#{}'.format(self.tag, len(self.traj_path))
+
 class MotionTrajectory(Trajectory):
     def __init__(self, robot, joints, traj_path, attachments=[]):
         super(MotionTrajectory, self).__init__(robot, joints, traj_path)
