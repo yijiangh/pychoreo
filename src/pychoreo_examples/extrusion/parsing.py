@@ -3,13 +3,17 @@ from __future__ import print_function
 import json
 import os
 import random
-from collections import defaultdict
+import datetime
+from collections import defaultdict, OrderedDict
 import numpy as np
 
 from pybullet_planning import add_line, create_cylinder, set_point, Euler, quat_from_euler, \
     set_quat, get_movable_joints, set_joint_positions, pairwise_collision, Pose, multiply, Point, load_model, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, apply_alpha, set_camera_pose
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, apply_alpha, set_camera_pose, is_connected
 from pybullet_planning import RED
+
+from pychoreo.process_model.trajectory import MotionTrajectory
+from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
 
 LENGTH_SCALE_CONVERSION = {
     'millimeter': 1e-3,
@@ -94,3 +98,61 @@ def create_elements_bodies(node_points, elements, radius=0.0015, shrink=0.002, c
         set_quat(body, quat_from_euler(Euler(pitch=theta, yaw=phi)))
         # p1 is z=-height/2, p2 is z=+height/2
     return element_bodies
+
+##################################################
+
+def export_trajectory(save_dir, trajs, ee_link_name, overwrite=True, shape_file_path='', indent=None, include_robot_data=True, include_link_path=True):
+    if include_robot_data and include_link_path:
+        assert is_connected(), 'needs to be connected to a pybullet client to get robot/FK data'
+
+    if os.path.exists(shape_file_path):
+        with open(shape_file_path, 'r') as f:
+            shape_data = json.loads(f.read())
+        if 'model_name' in shape_data:
+            file_name = shape_data['model_name']
+        else:
+            file_name = shape_file_path.split('.json')[-2].split(os.sep)[-1]
+    else:
+        file_name = 'pychoreo_result'
+        overwrite = False
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    data = OrderedDict()
+    data['assembly_type'] = 'extrusion'
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+
+    data['trajectory'] = []
+    for cp_id, cp_trajs in enumerate(trajs):
+        for sp_traj in cp_trajs:
+            ee_link_path = sp_traj.get_link_path(ee_link_name)
+        data['trajectory'].append([sp_traj.to_data(include_robot_data=True, include_link_path=True) for sp_traj in cp_trajs])
+
+    full_save_path = os.path.join(save_dir, '{}_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
+    with open(full_save_path, 'w') as f:
+        json.dump(data, f, indent=indent)
+
+def parse_saved_trajectory(file_path):
+    with open(file_path, 'r')  as f:
+        data = json.load(f)
+    print('file name: {} | write_time: {} | '.format(data['file_name'], data['write_time']))
+    full_traj = []
+    for proc_traj_data in data['trajectory']:
+        proc_traj_recon = []
+        assert proc_traj_data[0]['traj_type'] == 'MotionTrajectory'
+        proc_traj_recon.append(MotionTrajectory.from_data(proc_traj_data[0]))
+
+        assert proc_traj_data[1]['traj_type'] == 'PrintBufferTrajectory' and proc_traj_data[1]['tag'] == 'approach'
+        proc_traj_recon.append(PrintBufferTrajectory.from_data(proc_traj_data[1]))
+
+        assert proc_traj_data[2]['traj_type'] == 'PrintTrajectory'
+        proc_traj_recon.append(PrintTrajectory.from_data(proc_traj_data[2]))
+
+        assert proc_traj_data[3]['traj_type'] == 'PrintBufferTrajectory' and proc_traj_data[3]['tag'] == 'retreat'
+        proc_traj_recon.append(PrintBufferTrajectory.from_data(proc_traj_data[3]))
+        full_traj.append(proc_traj_recon)
+    return full_traj
+
+

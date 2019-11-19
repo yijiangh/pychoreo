@@ -20,6 +20,7 @@ def solve_ladder_graph_from_cartesian_processes(cart_proc_list, check_collision=
 
     world_saver = WorldSaver()
     st_time = time.time()
+    if verbose: print('Start building ladder graph.')
     # * build ladder graph for each cart_proc in the list
     graph_dict = {}
     for cp_id, cart_proc in enumerate(cart_proc_list):
