@@ -2,7 +2,7 @@ import time
 import numpy as np
 import colorsys
 from pybullet_planning import LockRenderer, set_camera_pose, add_line, add_text, wait_for_user, connect, load_pybullet, \
-    reset_simulation, disconnect, wait_for_duration, HideOutput
+    reset_simulation, disconnect, wait_for_duration, HideOutput, draw_pose
 from pybullet_planning import joints_from_names, set_joint_positions
 from pybullet_planning import get_link_pose, link_from_name
 from pybullet_planning import unit_pose, multiply, tform_point, point_from_pose
@@ -118,7 +118,9 @@ def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, 
                 set_joint_positions(robot, ik_joints, conf)
                 # * tracing TCP to represent extrusion
                 if isinstance(trajectory, PrintTrajectory):
-                    current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, ee_link_name)))
+                    ee_pose = get_link_pose(robot, link_from_name(robot, ee_link_name))
+                    # draw_pose(ee_pose, length=0.005)
+                    current_point = point_from_pose(ee_pose)
                     if last_point is not None:
                         color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                         handles.append(add_line(last_point, current_point, color=color))

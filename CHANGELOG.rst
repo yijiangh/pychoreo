@@ -19,6 +19,9 @@ Unreleased
 
 **Changed**
 
+* extrusion export save `lin_path`'s poses as 4x4 tform matrix (there's some disagreement in quaterion in `compas.Frame.from_quat`?)
+* move extrusion test fixtures into a separate fixture module
+
 0.1.1
 ----------
 

@@ -1,5 +1,6 @@
 import warnings
 from pybullet_planning import BodySaver, is_connected
+from pybullet_planning import tform_from_pose
 from pybullet_planning import has_link, link_from_name, get_link_pose, get_body_name, get_link_name, body_from_name
 from pybullet_planning import set_joint_positions, get_joint_names, joints_from_names
 
@@ -50,7 +51,7 @@ class Trajectory(object):
         data['tag'] = self.tag
         data['traj_path'] = self.traj_path
         if include_link_path:
-            data['link_path'] = {get_link_name(self.robot, link) : lpath for link, lpath in self.path_from_link.items()}
+            data['link_path'] = {get_link_name(self.robot, link) : [tform_from_pose(p).tolist() for p in lpath] for link, lpath in self.path_from_link.items()}
         return data
 
     @classmethod
