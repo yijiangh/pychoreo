@@ -92,10 +92,13 @@ class LadderGraph(object):
         # edges_ref = self.get_edges(r_id)
         self.get_rung(r_id).edges = edges
 
+    # TODO: from_data / to_data
+    # ! but we might need to think about the data format, the data can be large...
+
     def __repr__(self):
         return 'g tot_r_size:{0}, v_sizes:{1}, e_sizes:{2}'.format(self.size, self.get_vert_sizes(), self.get_edge_sizes())
 
-    # insert_rung, clear_rung_edges (maybe not needed at all)
+    # TODO: insert_rung, clear_rung_edges (maybe not needed at all)
 
 class EdgeBuilder(object):
     """edge builder for ladder graph, construct edges for fully connected biparte graph"""
@@ -138,6 +141,24 @@ class EdgeBuilder(object):
 # ladder graph operations
 
 def append_ladder_graph(current_graph, next_graph):
+    """Horizontally connect two given ladder graphs, edges are added between
+    all the nodes in current_graph's last rung and next_graph's first rung.
+
+    Note: this is typically used in connecting ladder graphs generated from
+    two different Cartesian processes.
+
+    Parameters
+    ----------
+    current_graph : LadderGraph
+        The first ladder graph
+    next_graph : LadderGraph
+        The second ladder graph to be appended at the back of the first one.
+
+    Returns
+    -------
+    LadderGraph
+        Horizontally joined ladder graph
+    """
     assert(isinstance(current_graph, LadderGraph) and isinstance(next_graph, LadderGraph))
     assert(current_graph.dof == next_graph.dof)
 
@@ -171,6 +192,26 @@ def append_ladder_graph(current_graph, next_graph):
 
 
 def concatenate_graph_vertically(graph_above, graph_below):
+    """Vertically connect two given ladder graphs by concatenating the rung data.
+    No edges will be added, requiring that the two given graphs have the same
+    amount of rungs. The old edges will be preserved but the edge indices of the
+    second graph will be shifted accordingly.
+
+    Note: this is typically used in concatenating sampled ladder graphs from the
+    SAME Cartesian process.
+
+    Parameters
+    ----------
+    graph_above : LadderGraph
+        The first ladder graph
+    graph_below : LadderGraph
+        The second ladder graph to be appended below the first one.
+
+    Returns
+    -------
+    LadderGraph
+        Vertically joined ladder graph
+    """
     assert isinstance(graph_above, LadderGraph)
     assert isinstance(graph_below, LadderGraph)
     assert graph_above.size == graph_below.size, 'must have same amount of rungs!'# same number of rungs

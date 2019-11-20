@@ -190,6 +190,9 @@ class CartesianProcess(object):
     def sample_ik_fn(self, sample_ik_fn_):
         self._sample_ik_fn = sample_ik_fn_
 
+    def reset_ee_pose_gen_fn(self):
+        self.ee_pose_gen_fn.reset()
+
     def sample_ee_poses(self, tool_from_root=None, copy_iter=False):
         if not copy_iter:
             ee_poses = next(self.ee_pose_gen_fn.gen)
@@ -216,10 +219,9 @@ class CartesianProcess(object):
             except StopIteration:
                 break
 
-    def get_ik_sols(self, ee_poses, check_collision=True, get_all=True, pt_ids=[], diagnosis=False):
+    def get_ik_sols(self, ee_poses, check_collision=True, diagnosis=False):
         assert len(ee_poses) == len(self.sub_process_list), 'sampled ee poses size ({}) not equal to the number of sub_processes ({})!'.format(len(ee_poses), len(self.sub_process_list))
-        if get_all:
-            sp_pt_ids = list(zip(range(len(self.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in ee_poses]))
+        sp_pt_ids = list(zip(range(len(self.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in ee_poses]))
         full_jt_list = [[] for _ in range(len(sp_pt_ids))]
         for sp_id, pt_ids in sp_pt_ids:
             for pt_id in pt_ids:

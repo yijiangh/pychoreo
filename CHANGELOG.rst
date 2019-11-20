@@ -17,10 +17,24 @@ Unreleased
 * `from_data` methods for `Trajectory` and subclasses
 * tagging print processes with `ground`/`creation`/`connect` in the test function
 
+**minor**
+
+* `is_any_empty` utility function for checking ik sol list of lists
+* `reset_ee_pose_gen_fn` for easier resetting generator
+
+**WIP**
+
+* `SparseLadderGraph` prototype added
+
 **Changed**
 
 * extrusion export save `lin_path`'s poses as 4x4 tform matrix (there's some disagreement in quaterion in `compas.Frame.from_quat`?)
 * move extrusion test fixtures into a separate fixture module
+* ladder graph interface broken into `from_cartesian_process_list`, `from_cartesian_process`, `from_poses` to increase code reuse
+
+**TODO**
+
+* storing `ee_poses` in `CapVert` is not necessary, should think of a way to get around this.
 
 0.1.1
 ----------

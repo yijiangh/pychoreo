@@ -18,7 +18,8 @@ from pychoreo.process_model.cartesian_process import CartesianProcess, Cartesian
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
-from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
+from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_process_list
+from pychoreo.cartesian_planner.sparse_ladder_graph import SparseLadderGraph
 
 import pychoreo_examples
 from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies, export_trajectory, parse_saved_trajectory
@@ -100,7 +101,10 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
     return cart_traj_dict
 
 @pytest.mark.extrusion
-def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector):
+# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
         (workspace_urdf, workspace_robot_disabled_link_names) = extrusion_robot_data
@@ -152,7 +156,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # element_sequence = [(0,3), (1,2)]
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
-    sample_time = 1
+    sample_time = 2
     roll_disc = 10
     pitch_disc = 10
     yaw_sample_size = 5
@@ -203,7 +207,20 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
     viz_inspect = False
     with LockRenderer(not viz_inspect):
-        cart_process_seq = solve_ladder_graph_from_cartesian_processes(cart_process_seq, verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
+        if solve_method == 'ladder_graph':
+            print('\n'+'#' * 10)
+            print('Solving with the vanilla ladder graph search algorithm.')
+            cart_process_seq = solve_ladder_graph_from_cartesian_process_list(cart_process_seq,
+                verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
+        elif solve_method == 'sparse_ladder_graph':
+            print('\n'+'#' * 10)
+            print('Solving with the sparse ladder graph search algorithm.')
+            # cart_process_seq = solve_ladder_graph_from_cartesian_process_list(cart_process_seq, verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
+            sparse_graph = SparseLadderGraph(cart_process_seq)
+            sparse_graph.find_sparse_path(verbose=True)
+            cart_process_seq = sparse_graph.extract_solution(verbose=True)
+        else:
+            raise ValueError('Invalid solve method!')
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
 
         # * extract trajectory from CartProcesses and add tags

@@ -16,7 +16,7 @@ from pybullet_planning import joints_from_names, link_from_name, has_link, get_c
 from pychoreo.process_model.cartesian_process import CartesianProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
-from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_processes
+from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_process_list
 # from pychoreo.transition_planner.motion_planner_interface import solve_transition_between_cartesian_processes
 
 import pychoreo_examples
