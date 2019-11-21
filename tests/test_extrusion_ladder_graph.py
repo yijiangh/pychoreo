@@ -102,8 +102,8 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
 
 @pytest.mark.extrusion
 # @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
-@pytest.mark.parametrize('solve_method', [('ladder_graph')])
-# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -129,7 +129,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
     # * get problem & pre-computed json file paths
-    file_path, seq_file_path = extrusion_problem_path
+    file_path, seq_file_path, _ = extrusion_problem_path
 
     # * load shape (get nodal positions)
     elements, node_points, ground_nodes = load_extrusion(file_path)
@@ -156,10 +156,10 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # element_sequence = [(0,3), (1,2)]
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
-    sample_time = 2
+    sample_time = 5
     roll_disc = 10
     pitch_disc = 10
-    yaw_sample_size = 5
+    yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     linear_step_size = 0.003 # mm
     domain_size = roll_disc * pitch_disc
 
@@ -215,9 +215,8 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         elif solve_method == 'sparse_ladder_graph':
             print('\n'+'#' * 10)
             print('Solving with the sparse ladder graph search algorithm.')
-            # cart_process_seq = solve_ladder_graph_from_cartesian_process_list(cart_process_seq, verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
             sparse_graph = SparseLadderGraph(cart_process_seq)
-            sparse_graph.find_sparse_path(verbose=True)
+            sparse_graph.find_sparse_path(verbose=True, vert_timeout=2.0, sparse_sample_timeout=10)
             cart_process_seq = sparse_graph.extract_solution(verbose=True)
         else:
             raise ValueError('Invalid solve method!')
@@ -259,7 +258,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     return2idle = True
     transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                    disabled_collisions=disabled_self_collisions,
-                                                                   obstacles=[], return2idle=return2idle)
+                                                                   obstacles=[workspace], return2idle=return2idle)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'
@@ -294,14 +293,13 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
         (workspace_urdf, workspace_robot_disabled_link_names) = extrusion_robot_data
 
     # * get problem & pre-computed json file paths
-    file_path, _ = extrusion_problem_path
+    file_path, _, result_file_name = extrusion_problem_path
 
     # * load shape (get nodal positions)
     elements, node_points, ground_nodes = load_extrusion(file_path)
 
     # * parse saved trajectory results
     here = os.path.dirname(__file__)
-    result_file_name = 'four-frame_result_.json'
     save_file_path = os.path.join(here, 'results', result_file_name)
 
     # parse without connect
@@ -324,4 +322,4 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     # visualize plan
     if viewer:
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
-                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.1, tr_time_step=0.05)
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.05)

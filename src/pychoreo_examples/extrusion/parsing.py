@@ -141,17 +141,14 @@ def parse_saved_trajectory(file_path):
     full_traj = []
     for proc_traj_data in data['trajectory']:
         proc_traj_recon = []
-        assert proc_traj_data[0]['traj_type'] == 'MotionTrajectory'
-        proc_traj_recon.append(MotionTrajectory.from_data(proc_traj_data[0]))
-
-        assert proc_traj_data[1]['traj_type'] == 'PrintBufferTrajectory' and proc_traj_data[1]['tag'] == 'approach'
-        proc_traj_recon.append(PrintBufferTrajectory.from_data(proc_traj_data[1]))
-
-        assert proc_traj_data[2]['traj_type'] == 'PrintTrajectory'
-        proc_traj_recon.append(PrintTrajectory.from_data(proc_traj_data[2]))
-
-        assert proc_traj_data[3]['traj_type'] == 'PrintBufferTrajectory' and proc_traj_data[3]['tag'] == 'retreat'
-        proc_traj_recon.append(PrintBufferTrajectory.from_data(proc_traj_data[3]))
+        for sp_traj_data in proc_traj_data:
+            if sp_traj_data['traj_type'] == 'MotionTrajectory':
+                sp_traj = MotionTrajectory.from_data(sp_traj_data)
+            if sp_traj_data['traj_type'] == 'PrintBufferTrajectory':
+                sp_traj = PrintBufferTrajectory.from_data(sp_traj_data)
+            if sp_traj_data['traj_type'] == 'PrintTrajectory':
+                sp_traj = PrintTrajectory.from_data(sp_traj_data)
+            proc_traj_recon.append(sp_traj)
         full_traj.append(proc_traj_recon)
     return full_traj
 

@@ -7,24 +7,33 @@ All notable changes to this project will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
+**TODO**
+
+* storing `ee_poses` in `CapVert` is not necessary, should think of a way to get around this.
+* storing joint data in a continuous array may not be necessary, since we are using nested list to describe subprocesses anyway
+* need to regulate the use of `ik_joints` or `ik_joint_names` for user interfaces
+
 Unreleased
 ----------
 
 **Added**
 
+* `SparseLadderGraph` completed
 * export planned trajectory for extrusion
 * add parsing function for visualizing saved extrusion trajectories
 * `from_data` methods for `Trajectory` and subclasses
 * tagging print processes with `ground`/`creation`/`connect` in the test function
+* infinite pose sampler added for extrusion case when using sparse ladder graph to solve
 
-**minor**
+**Minor**
 
 * `is_any_empty` utility function for checking ik sol list of lists
 * `reset_ee_pose_gen_fn` for easier resetting generator
 
-**WIP**
+**Fixed**
 
-* `SparseLadderGraph` prototype added
+* fix nested empty list detection bug in `is_any_empty`
+* add `disabled_collisions` argument to the extrusion transition_planner
 
 **Changed**
 
@@ -32,9 +41,6 @@ Unreleased
 * move extrusion test fixtures into a separate fixture module
 * ladder graph interface broken into `from_cartesian_process_list`, `from_cartesian_process`, `from_poses` to increase code reuse
 
-**TODO**
-
-* storing `ee_poses` in `CapVert` is not necessary, should think of a way to get around this.
 
 0.1.1
 ----------
@@ -64,10 +70,6 @@ Unreleased
 **Fixed**
 
 **Deprecated**
-
-**TODO**
-
-- need to regulate the use of `ik_joints` or `ik_joint_names` for user interfaces
 
 0.0.1
 ------

@@ -54,7 +54,7 @@ class CapVert(object):
 
     @ee_poses.setter
     def ee_poses(self, ee_poses_):
-        self.ee_poses = ee_poses_
+        self._ee_poses = ee_poses_
 
     def distance_to(self, v):
         """compute distance to CapVert v.
@@ -75,6 +75,7 @@ class CapVert(object):
         assert(self.dof == v.dof)
         cost = INF
         dof = self.dof
+        # TODO: maybe we can get rid of the dof and concatenation here
         n_prev_end = int(len(v.end_jt_data) / dof)
         n_this_st = int(len(self.st_jt_data) / dof)
 
@@ -112,7 +113,7 @@ class CapVert(object):
         v : CapVert
             Parent capsule vertex.
         """
-        assert(isinstance(v, CapVert) or not v)
+        assert(isinstance(v, CapVert) or v == None)
         self._parent_vert = v
         self.parent_cost = self.distance_to(v)
 
@@ -125,6 +126,10 @@ class CapVert(object):
             prev_v = prev_v.parent_vert
         return cost
 
+    def __repr__(self):
+        return 'CapVert r_id:{}|stJ#{}|endJ#{}|parent_cost:{}|parent rung:{}'.format(
+            self.host_rung_id, len(self.st_jt_data), len(self.end_jt_data), self.parent_cost, self.parent_vert.host_rung_id if self.parent_vert else -1)
+
 class CapRung(object):
     """The CapRung (capsulated ladder rung) is an abstract containter for
     CapVerts that corresponds to the same Cartesian process to live in.
@@ -133,9 +138,9 @@ class CapRung(object):
     a given CapRung.
 
     """
-    def __init__(self, cap_verts=[], cart_proc=None, rung_id=None):
+    def __init__(self, cart_proc=None, rung_id=None):
         self._rung_id = rung_id
-        self._cap_verts = cap_verts
+        self._cap_verts = []
         self._cart_proc = cart_proc
         # self.path_pts = []
         # # all the candidate orientations for each kinematics segment
@@ -168,15 +173,15 @@ class CapRung(object):
             ee_poses = self.cartesian_process.sample_ee_poses()
         except StopIteration:
             warnings.warn('ee pose gen fn exhausted, we should not plug a finite generator in the SparseLadderGraph. Iterator reset.')
-            ee_poses.reset_ee_pose_gen_fn()
+            self.cartesian_process.reset_ee_pose_gen_fn()
             ee_poses = self.cartesian_process.sample_ee_poses()
         ik_sols = self.cartesian_process.get_ik_sols(ee_poses, check_collision=check_collision)
         if is_any_empty(ik_sols):
             return None
         else:
             cap_vert = CapVert(self.dof, host_rung_id=self.rung_id)
-            cap_vert.st_jt_data = ik_sols[0][0]
-            cap_vert.end_jt_data = ik_sols[-1][-1]
+            cap_vert.st_jt_data = [jv for jts in ik_sols[0][0] for jv in jts]
+            cap_vert.end_jt_data = [jv for jts in ik_sols[-1][-1] for jv in jts]
             cap_vert.ee_poses = ee_poses
             return cap_vert
 
@@ -184,6 +189,9 @@ class SparseLadderGraph(object):
     def __init__(self, cart_proc_list):
         assert len(cart_proc_list) > 0 and isinstance(cart_proc_list, list)
         self._cap_rungs = [CapRung(cart_proc=cart_proc, rung_id=cp_id) for cp_id, cart_proc in enumerate(cart_proc_list)]
+        # self._cap_rungs = []
+        # for cp_id, cart_proc in enumerate(cart_proc_list):
+        #     self._cap_rungs.append(CapRung(cart_proc=cart_proc, rung_id=cp_id))
         self._cart_proc_list = cart_proc_list
 
     @classmethod
@@ -199,11 +207,11 @@ class SparseLadderGraph(object):
         return self._cart_proc_list
 
     def find_sparse_path(self, check_collision=True, vert_timeout=2.0, sparse_sample_timeout=5.0, verbose=False):
-        #     max_time = DEFAULT_SPARSE_GRAPH_RUNG_TIMEOUT * len(self.cap_rungs)
         if verbose:
             print('sparse graph vert sample timeout: {}, sparse graph sampling timeout : {}'.format(
                 vert_timeout, sparse_sample_timeout))
-        # find intial solution
+
+        # find an intial solution
         init_sol_st_time = time.time()
         prev_vert = None
         for r_id, cap_rung in enumerate(self.cap_rungs):
@@ -211,7 +219,7 @@ class SparseLadderGraph(object):
             while (time.time() - unit_st_time) < vert_timeout:
                 cap_vert = cap_rung.sample_cap_vert(check_collision=check_collision)
                 if cap_vert:
-                    # one feasible instance of cap_vert in this rung has been found, break the loop
+                    # if one feasible instance of cap_vert in this rung has been found, break the loop
                     cap_vert.parent_vert = prev_vert
                     cap_vert.host_rung_id = r_id
                     cap_rung.cap_verts.append(cap_vert)
@@ -266,12 +274,12 @@ class SparseLadderGraph(object):
         return rrt_cost
 
     def extract_solution(self, check_collision=True, verbose=False, warning_pause=False):
-        """[summary]
+        """extract ladder graph solution out of a solved sparse path
 
         Returns
         -------
-        [type]
-            [description]
+        a list of CartesianProcess
+            with trajectory filled in.
         """
         if verbose: st_time = time.time()
         graph_dict = {}
@@ -282,8 +290,7 @@ class SparseLadderGraph(object):
             # poses = [multiply(Pose(point=pt), last_cap_vert.quat_pose) for pt in cap_rung.path_pts]
             unit_ladder_graph = generate_ladder_graph_from_poses(
                 cap_rung.cartesian_process, last_cap_vert.ee_poses, check_collision=check_collision)
-
-            if unit_ladder_graph.size > 0:
+            if unit_ladder_graph and unit_ladder_graph.size > 0:
                 graph_dict[cap_rung.rung_id] = unit_ladder_graph
                 if verbose: print('#{}-{} ladder graph formed.'.format(cap_rung.rung_id, cap_rung.cartesian_process))
             else:
@@ -303,14 +310,13 @@ class SparseLadderGraph(object):
         # * DAG solve for the concatenated graph
         st_time = time.time()
         dag_search = DAGSearch(unified_graph)
-        dag_search.run()
+        min_cost = dag_search.run()
         tot_traj = dag_search.shortest_path()
-        if verbose: print('DAG search done in {} secs.'.format(time.time()-st_time))
+        if verbose: print('DAG search done in {} secs, cost {}.'.format(time.time()-st_time, min_cost))
 
         # * Divide the contatenated trajectory back to processes
-        proc_trajs = divide_list_chunks(tot_traj, [g.size for g in graph_dict.values()])
-        proc_trajs = {cp_id : traj for cp_id, traj in zip(graph_dict.keys(), proc_trajs)}
-        print({proc_id : len(val) for proc_id, val in proc_trajs.items()})
+        proc_trajs = divide_list_chunks(tot_traj, [graph_dict[cp_id].size for cp_id in sorted(graph_dict)])
+        proc_trajs = {cp_id : traj for cp_id, traj in zip(sorted(graph_dict), proc_trajs)}
         for cp_id, proc_traj in proc_trajs.items():
             # divide into subprocesses
             subp_trajs = divide_list_chunks(proc_traj, [sp.path_point_size for sp in self.cart_proc_list[cp_id].sub_process_list])

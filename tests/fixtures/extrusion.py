@@ -10,7 +10,8 @@ import pychoreo_examples
 @pytest.fixture
 def extrusion_problem_path():
     # * extrusion problem here
-    problem = 'four-frame' # | 'simple_frame'
+    problem = 'four-frame'
+    # problem = 'simple_frame'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -26,7 +27,8 @@ def extrusion_problem_path():
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES
     return os.path.join(EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[problem]), \
-           os.path.join(here, '..', 'test_data', EXTRUSION_SEQ_FILENAMES[problem])
+           os.path.join(here, '..', 'test_data', EXTRUSION_SEQ_FILENAMES[problem]), \
+           problem + '_result_.json'
 
 @pytest.fixture
 def extrusion_robot_data():

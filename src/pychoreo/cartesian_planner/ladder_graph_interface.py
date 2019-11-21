@@ -40,9 +40,9 @@ def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, check_collisi
     # * DAG solve for the concatenated graph
     st_time = time.time()
     dag_search = DAGSearch(unified_graph)
-    dag_search.run()
+    min_cost = dag_search.run()
     tot_traj = dag_search.shortest_path()
-    if verbose: print('DAG search done in {} secs.'.format(time.time()-st_time))
+    if verbose: print('DAG search done in {} secs, cost {}.'.format(time.time()-st_time, min_cost))
 
     # * Divide the contatenated trajectory back to processes
     proc_trajs = divide_list_chunks(tot_traj, [g.size for g in graph_dict.values()])
