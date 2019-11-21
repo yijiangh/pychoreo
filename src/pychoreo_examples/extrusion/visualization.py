@@ -2,7 +2,7 @@ import time
 import numpy as np
 import colorsys
 from pybullet_planning import LockRenderer, set_camera_pose, add_line, add_text, wait_for_user, connect, load_pybullet, \
-    reset_simulation, disconnect, wait_for_duration, HideOutput
+    reset_simulation, disconnect, wait_for_duration, HideOutput, draw_pose
 from pybullet_planning import joints_from_names, set_joint_positions
 from pybullet_planning import get_link_pose, link_from_name
 from pybullet_planning import unit_pose, multiply, tform_point, point_from_pose
@@ -43,7 +43,7 @@ def set_extrusion_camera(node_points):
 ##################################################
 
 def draw_extrusion_sequence(node_points, element_bodies, element_sequence, seq_poses=None, ee_pose_map_fn=lambda id : unit_pose,
-                           line_width=10, time_step=INF, direction_len=0.005):
+                           line_width=10, time_step=INF, direction_len=0.005, extrusion_tags=[]):
     assert len(element_bodies) == len(element_sequence)
     if seq_poses:
         assert len(seq_poses) == len(element_sequence)
@@ -58,7 +58,10 @@ def draw_extrusion_sequence(node_points, element_bodies, element_sequence, seq_p
         seq_ratio = float(seq_id)/(len(element_sequence)-1)
         color = np.array([0, 0, 1])*(1-seq_ratio) + np.array([1,0,0])*seq_ratio
         handles.append(add_line(p1, p2, color=tuple(color), width=line_width))
-        handles.append(add_text(str(seq_id), position=e_mid))
+        element_tag = str(seq_id)
+        if len(extrusion_tags) == len(element_sequence):
+            element_tag += '-' + extrusion_tags[seq_id]
+        handles.append(add_text(element_tag, position=e_mid))
 
         if seq_poses is not None:
             with LockRenderer():
@@ -115,7 +118,9 @@ def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, 
                 set_joint_positions(robot, ik_joints, conf)
                 # * tracing TCP to represent extrusion
                 if isinstance(trajectory, PrintTrajectory):
-                    current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, ee_link_name)))
+                    ee_pose = get_link_pose(robot, link_from_name(robot, ee_link_name))
+                    # draw_pose(ee_pose, length=0.005)
+                    current_point = point_from_pose(ee_pose)
                     if last_point is not None:
                         color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                         handles.append(add_line(last_point, current_point, color=color))
@@ -146,8 +151,8 @@ def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, 
             # * sanity check on connectness
             if isinstance(trajectory, PrintTrajectory):
                 is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
-                print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
-                    cp_id, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.traj_path)))
+                print('{}) {:9} | Tag: {} | Connected: {} | Ground: {} | Length: {}'.format(
+                    cp_id, str(trajectory), trajectory.tag, is_connected, is_ground(trajectory.directed_element, ground_nodes), len(trajectory.traj_path)))
                 if not is_connected:
                     print('Warning: this element is not connected to existing partial structure!')
                     wait_for_user()

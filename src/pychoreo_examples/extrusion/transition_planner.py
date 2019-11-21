@@ -33,7 +33,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
             print('Diagnosis...')
 
             cfn = get_collision_fn(robot, ik_joints, obstacles=obstacles + built_obstacles, attachments=[],
-                                   self_collisions=True)
+                                   self_collisions=True, disabled_collisions=disabled_collisions)
 
             print('start pose:')
             cfn(tr_start_conf, diagnosis=True)

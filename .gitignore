@@ -103,3 +103,6 @@ ENV/
 
 # Visual Studio Code
 .vscode/
+
+# vim
+*.un~

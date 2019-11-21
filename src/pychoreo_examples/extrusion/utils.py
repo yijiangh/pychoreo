@@ -9,6 +9,7 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 
+from pybullet_planning import INF
 from pybullet_planning import set_pose, multiply, pairwise_collision, get_collision_fn, joints_from_names, \
     get_disabled_collisions, interpolate_poses, get_moving_links, get_body_body_disabled_collisions, interval_generator
 from pybullet_planning import RED, Pose, Euler
@@ -33,10 +34,10 @@ def get_node_neighbors(elements):
     return node_neighbors
 
 
-def get_element_neighbors(element_bodies):
-    node_neighbors = get_node_neighbors(element_bodies)
+def get_element_neighbors(elements):
+    node_neighbors = get_node_neighbors(elements)
     element_neighbors = defaultdict(set)
-    for e in element_bodies:
+    for e in elements:
         n1, n2 = e
         element_neighbors[e].update(node_neighbors[n1])
         element_neighbors[e].update(node_neighbors[n2])
@@ -46,32 +47,18 @@ def get_element_neighbors(element_bodies):
 ##################################################
 
 def max_valence_extrusion_direction_routing(element_sequence, elements, grounded_node_ids):
-    # based on valence now, can be
     reverse_flags = [False for e in element_sequence]
+    extrusion_tags = ['' for e in element_sequence]
 
-        # if not csp.net.is_element_grounded(check_e_id):
-        #     ngbh_e_ids = rec_seq.intersection(csp.net.get_element_neighbor(check_e_id))
-        #     shared_node = set()
-        #     for n_e in ngbh_e_ids:
-        #         shared_node.update([csp.net.get_shared_node_id(check_e_id, n_e)])
-        #     shared_node = list(shared_node)
-        # else:
-        #     shared_node = [v_id for v_id in csp.net.get_element_end_point_ids(check_e_id)
-        #                    if csp.net.assembly_joints[v_id].is_grounded]
-        # assert(shared_node)
-
-    return reverse_flags
+    return reverse_flags, extrusion_tags
 
 def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
-        element_seq, element_bodies,
+        element_seq, element_bodies, ground_nodes,
         domain_size, ee_pose_map_fn, ee_body,
         yaw_sample_size=10, sample_time=5, approach_distance=0.01, linear_step_size=0.003, tool_from_root=None,
         self_collisions=True, disabled_collisions={},
         obstacles=[], extra_disabled_collisions={},
         verbose=False):
-
-    assert len(cart_process_dict) == len(element_seq)
-    assert len(element_bodies) == len(element_seq)
 
     built_obstacles = copy(obstacles)
     e_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
@@ -91,18 +78,26 @@ def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
         direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(e_fmaps[element]) if is_feasible]
         # direct enumarator or random sampling
         # yaw_samples = np.arange(-np.pi, np.pi, 2*np.pi/yaw_sample_size)
-        yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)
-        yaw_samples = next(yaw_gen)
+        if yaw_sample_size < INF:
+            yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)
+            yaw_samples = next(yaw_gen)
+            candidate_poses = [multiply(dpose, Pose(euler=Euler(yaw=yaw))) for dpose, yaw in product(direction_poses, yaw_samples)]
+            enum_gen_fn = get_enumeration_pose_generator(candidate_poses, shuffle=True)
+            if verbose : print('E#{} valid, candidate poses: {}, build enumeration sampler'.format(element, len(candidate_poses)))
+            new_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts,
+                                                       enum_gen_fn, interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
+        else:
+            def get_yaw_generator(base_poses):
+                while True:
+                    yaw = random.uniform(-np.pi, +np.pi)
+                    dpose = random.choice(base_poses)
+                    yield multiply(dpose, Pose(euler=Euler(yaw=yaw)))
+            if verbose : print('E#{} valid, candidate direction poses: {}, build inf sampler'.format(element, len(direction_poses)))
+            inf_pose_gen_fn = get_yaw_generator(direction_poses)
+            new_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts,
+                                                       inf_pose_gen_fn, interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
 
-        candidate_poses = [multiply(dpose, Pose(euler=Euler(yaw=yaw))) for dpose, yaw in product(direction_poses, yaw_samples)]
-        enum_gen_fn = get_enumeration_pose_generator(candidate_poses, shuffle=True)
-        if verbose : print('E#{} valid, candidate poses: {}'.format(element, len(candidate_poses)))
-        new_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts,
-                                                   enum_gen_fn, interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
         cart_process_dict[element].ee_pose_gen_fn.update_gen_fn(new_pose_gen_fn)
-        # cart_process_dict[element].ee_pose_gen_fn = CartesianPoseGenFn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts, new_pose_gen_fn)
-
-        # TODO: reverse info
 
         # use sequenced elements for collision objects
         collision_fn = get_collision_fn(robot, ik_joints, built_obstacles,
