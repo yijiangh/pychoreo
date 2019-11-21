@@ -13,6 +13,11 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 * storing joint data in a continuous array may not be necessary, since we are using nested list to describe subprocesses anyway
 * need to regulate the use of `ik_joints` or `ik_joint_names` for user interfaces
 
+Unreleased
+----------
+
+**Added**
+
 0.2.0
 ----------
 

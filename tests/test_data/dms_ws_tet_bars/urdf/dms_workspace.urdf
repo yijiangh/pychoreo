@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<robot name="dms_workspace" xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <link name="workspace_base_link"/>
+  <link name="dms_workspace_base_box">
+    <collision>
+      <geometry>
+        <mesh filename="../meshes/static_obstacles/collision/dms_workspace_base_box.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="dms_workspace_fab_table">
+    <collision>
+      <geometry>
+        <mesh filename="../meshes/static_obstacles/collision/dms_workspace_fab_table.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- end of link list -->
+
+  <!-- joint list -->
+  <joint name="workspace_baselink_to_dms_workspace_base_box" type="fixed">
+    <parent link="workspace_base_link"/>
+    <child link="dms_workspace_base_box"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+  <joint name="workspace_baselink_to_dms_workspace_fab_table" type="fixed">
+    <parent link="workspace_base_link"/>
+    <child link="dms_workspace_fab_table"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+
+</robot>

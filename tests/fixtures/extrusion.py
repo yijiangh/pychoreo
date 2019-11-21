@@ -4,7 +4,6 @@ import pytest
 from compas.robots import RobotModel
 from compas_fab.robots import Robot as RobotClass
 from compas_fab.robots import RobotSemantics
-
 import pychoreo_examples
 
 @pytest.fixture
