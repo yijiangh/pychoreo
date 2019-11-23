@@ -18,6 +18,7 @@
         <chain base_link="workspace_base_link" tip_link="MIT_3412_right_corner_piece" />
         <chain base_link="workspace_base_link" tip_link="MIT_3412_left_wall" />
         <chain base_link="workspace_base_link" tip_link="MIT_3412_right_wall" />
+        <chain base_link="workspace_base_link" tip_link="print_table" />
     </group>
 
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->

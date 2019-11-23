@@ -46,22 +46,38 @@ def get_element_neighbors(elements):
 
 ##################################################
 
-def max_valence_extrusion_direction_routing(element_sequence, elements, grounded_node_ids):
-    reverse_flags = [False for e in element_sequence]
-    extrusion_tags = ['' for e in element_sequence]
-
-    return reverse_flags, extrusion_tags
+def max_valence_extrusion_direction_routing(element_sequence, elements, node_points, grounded_node_ids):
+    reverse_flags = {e : False for e in elements}
+    current_node_neighbors = defaultdict(set)
+    for seq_id, e in enumerate(element_sequence):
+        if e not in elements:
+            e = e[::-1]
+            element_sequence[seq_id] = e
+        assert e in elements
+        n1, n2 = e
+        current_node_neighbors[n1].add(e)
+        current_node_neighbors[n2].add(e)
+        # if grounded, always start with the grounded node
+        if n1 in grounded_node_ids or n2 in grounded_node_ids:
+            if n2 in grounded_node_ids:
+                reverse_flags[e] = True
+        # prefer starting with the node with a larger valence
+        elif len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]):
+            reverse_flags[e] = True
+    return reverse_flags
 
 def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
         element_seq, element_bodies, ground_nodes,
         domain_size, ee_pose_map_fn, ee_body,
         yaw_sample_size=10, sample_time=5, approach_distance=0.01, linear_step_size=0.003, tool_from_root=None,
         self_collisions=True, disabled_collisions={},
-        obstacles=[], extra_disabled_collisions={},
+        obstacles=None, extra_disabled_collisions={},
+        reverse_flags=None,
         verbose=False):
-
-    built_obstacles = copy(obstacles)
+    built_obstacles = copy(obstacles) if obstacles else []
+    if not reverse_flags: reverse_flags = [False for _ in len(element_seq)]
     e_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
+
     for element in element_seq:
         if verbose : print('checking E#{}'.format(element))
         st_time = time.time()
@@ -69,23 +85,27 @@ def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
             e_fmaps[element] = prune_ee_feasible_directions(cart_process_dict[element],
                                     e_fmaps[element], ee_pose_map_fn, ee_body,
                                     obstacles=obstacles,
-                                    tool_from_root=tool_from_root, check_ik=False)
+                                    tool_from_root=tool_from_root, check_ik=False,
+                                    sub_process_ids=[(1,[])])
             if sum(e_fmaps[element]) > 0:
                 break
         assert sum(e_fmaps[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
 
         # use pruned direction set to gen ee path poses
         direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(e_fmaps[element]) if is_feasible]
-        # direct enumarator or random sampling
-        # yaw_samples = np.arange(-np.pi, np.pi, 2*np.pi/yaw_sample_size)
+
+        base_path_pts = cart_process_dict[element].ee_pose_gen_fn.base_path_pts
+        if reverse_flags[element]:
+            base_path_pts = base_path_pts[::-1]
+
         if yaw_sample_size < INF:
             yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)
             yaw_samples = next(yaw_gen)
             candidate_poses = [multiply(dpose, Pose(euler=Euler(yaw=yaw))) for dpose, yaw in product(direction_poses, yaw_samples)]
             enum_gen_fn = get_enumeration_pose_generator(candidate_poses, shuffle=True)
             if verbose : print('E#{} valid, candidate poses: {}, build enumeration sampler'.format(element, len(candidate_poses)))
-            new_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts,
-                                                       enum_gen_fn, interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
+            new_pose_gen_fn = extrusion_ee_pose_gen_fn(base_path_pts, enum_gen_fn, interpolate_poses,
+                                                       approach_distance=approach_distance, pos_step_size=linear_step_size)
         else:
             def get_yaw_generator(base_poses):
                 while True:
@@ -94,8 +114,8 @@ def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
                     yield multiply(dpose, Pose(euler=Euler(yaw=yaw)))
             if verbose : print('E#{} valid, candidate direction poses: {}, build inf sampler'.format(element, len(direction_poses)))
             inf_pose_gen_fn = get_yaw_generator(direction_poses)
-            new_pose_gen_fn = extrusion_ee_pose_gen_fn(cart_process_dict[element].ee_pose_gen_fn.base_path_pts,
-                                                       inf_pose_gen_fn, interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
+            new_pose_gen_fn = extrusion_ee_pose_gen_fn(base_path_pts, inf_pose_gen_fn, interpolate_poses,
+                                                       approach_distance=approach_distance, pos_step_size=linear_step_size)
 
         cart_process_dict[element].ee_pose_gen_fn.update_gen_fn(new_pose_gen_fn)
 
@@ -106,6 +126,8 @@ def add_collision_fns_from_seq(robot, ik_joints, cart_process_dict,
                                         custom_limits={})
         for sub_process in cart_process_dict[element].sub_process_list:
             sub_process.collision_fn = collision_fn
+
+        # TODO: add pointwise collision fn to prevent last conf collides with the element currently printing
 
         built_obstacles = built_obstacles + [element_bodies[element]]
 

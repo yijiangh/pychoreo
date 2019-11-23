@@ -239,9 +239,9 @@ class CartesianProcess(object):
 ##################################################
 
 def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_fn, ee_body,
-                                 check_all=True, pt_ids=[],
                                  self_collisions=True, disabled_collisions={},
                                  obstacles=[], extra_disabled_collisions={},
+                                 sub_process_ids=None,
                                  tool_from_root=None, check_ik=False):
     # only take the positional part
     sampled_poses = cartesian_process.sample_ee_poses(copy_iter=True)
@@ -250,8 +250,13 @@ def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_f
                                                      disabled_collisions=disabled_collisions)
 
     assert len(way_points) == len(cartesian_process.sub_process_list), 'sampled ee poses must have the same number of lists with the number of sub_processes!'
-    if check_all:
-        sp_pt_ids = list(zip(range(len(cartesian_process.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in way_points]))
+    if not sub_process_ids:
+        sub_process_ids = list(zip(range(len(cartesian_process.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in way_points]))
+    else:
+        for sp_id, sp_pair in enumerate(sub_process_ids):
+            if len(sp_pair[1]) == 0:
+                sub_process_ids[sp_id] = (sp_pair[0], [pt_id for pt_id in range(len(way_points[sp_pair[0]]))])
+                # TODO: sanity check specified pt_ids
 
     fmap_ids = list(range(len(free_pose_map)))
     random.shuffle(fmap_ids)
@@ -259,7 +264,7 @@ def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_f
         if free_pose_map[i]:
             direction_pose = ee_pose_map_fn(i)
             way_poses = [[(pt, direction_pose[1]) for pt in sp_way_points] for sp_way_points in way_points]
-            for sp_id, pt_ids in sp_pt_ids:
+            for sp_id, pt_ids in sub_process_ids:
                 for pt_id in pt_ids:
                     pose = way_poses[sp_id][pt_id]
                     # transform TCP to EE tool base link

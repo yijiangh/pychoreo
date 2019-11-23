@@ -10,7 +10,7 @@ import pychoreo_examples
 def extrusion_problem_path():
     # * extrusion problem here
     problem = 'four-frame'
-    # problem = 'simple_frame'
+    # problem = 'long_beam_test'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -18,10 +18,16 @@ def extrusion_problem_path():
         'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
         'four-frame': 'four-frame.json',
         'simple_frame': 'simple_frame.json',
+        'extrusion_exp_L75.0' : 'extrusion_exp_L75.0.json',
+        'long_beam_test' : 'long_beam_test.json',
+        'extreme_beam_test' : 'extreme_beam_test.json',
     }
     EXTRUSION_SEQ_FILENAMES = {
         'four-frame': 'four-frame_solution_regression-z.json',
         'simple_frame': 'simple_frame_solution_regression-z.json',
+        'extrusion_exp_L75.0' : 'extrusion_exp_L75.0_solution_regression-z.json',
+        'long_beam_test' : 'long_beam_test_solution_regression-z.json',
+        'extreme_beam_test' : 'extreme_beam_test_solution_regression-z.json',
     }
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES

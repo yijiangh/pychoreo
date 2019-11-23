@@ -4,6 +4,7 @@ import random
 import numpy as np
 import pytest
 from itertools import chain
+import warnings
 
 from pybullet_planning import INF
 from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
@@ -12,7 +13,7 @@ from pybullet_planning import interpolate_poses, multiply, unit_pose, get_relati
 from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
-    draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions
+    draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions, create_obj
 
 from pychoreo.process_model.cartesian_process import CartesianProcess, CartesianSubProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
@@ -25,7 +26,7 @@ import pychoreo_examples
 from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies, export_trajectory, parse_saved_trajectory
 from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw_extrusion_sequence, display_trajectories
 from pychoreo_examples.extrusion.stream import extrusion_ee_pose_gen_fn
-from pychoreo_examples.extrusion.utils import add_collision_fns_from_seq, is_ground
+from pychoreo_examples.extrusion.utils import add_collision_fns_from_seq, is_ground, max_valence_extrusion_direction_routing
 from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
 from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
@@ -101,9 +102,9 @@ def build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_jo
     return cart_traj_dict
 
 @pytest.mark.extrusion
-# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -141,7 +142,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         element_bodies = dict(zip(elements,
-            create_elements_bodies(node_points, elements, radius=0.001, shrink=0.008)))
+            create_elements_bodies(node_points, elements, radius=0.002, shrink=0.0025)))
         assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
@@ -150,18 +151,27 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         base_link_name, extrusion_end_effector, tool_from_root, viz_step=False)
 
     # * load precomputed sequence
-    with open(seq_file_path, 'r') as f:
-        seq_data = json.loads(f.read())
-    element_sequence = [tuple(e) for e in seq_data['plan']]
-    # element_sequence = [(0,3), (1,2)]
+    try:
+        with open(seq_file_path, 'r') as f:
+            seq_data = json.loads(f.read())
+        element_sequence = [tuple(e) for e in seq_data['plan']]
+    except:
+        warnings.warn('Parsing precomputed sequence file failed - using default element sequence.')
+        element_sequence = [tuple(e) for e in elements]
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
-    sample_time = 5
-    roll_disc = 10
-    pitch_disc = 10
+    # * compute reverse flags based on the precomputed sequence
+    reverse_flags = max_valence_extrusion_direction_routing(element_sequence, elements, node_points, ground_nodes)
+    print('reverse flags: ', reverse_flags)
+
+    sample_time = 10
+    sparse_time_out = 10
+    roll_disc = 20
+    pitch_disc = 20
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     linear_step_size = 0.003 # mm
     domain_size = roll_disc * pitch_disc
+    jt_res = 0.05
 
     # * construct ignored body-body links for collision checking
     # in this case, including self-collision between links of the robot
@@ -191,7 +201,8 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
                 domain_size, ee_pose_map_fn, ee_body,
                 sample_time=sample_time, yaw_sample_size=yaw_sample_size, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
                 self_collisions=True, disabled_collisions=disabled_self_collisions,
-                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions, verbose=True)
+                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
+                reverse_flags=reverse_flags, verbose=True)
 
         assert isinstance(cart_process_seq, list)
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
@@ -216,7 +227,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             print('\n'+'#' * 10)
             print('Solving with the sparse ladder graph search algorithm.')
             sparse_graph = SparseLadderGraph(cart_process_seq)
-            sparse_graph.find_sparse_path(verbose=True, vert_timeout=2.0, sparse_sample_timeout=10)
+            sparse_graph.find_sparse_path(verbose=True, vert_timeout=sample_time, sparse_sample_timeout=sparse_time_out)
             cart_process_seq = sparse_graph.extract_solution(verbose=True)
         else:
             raise ValueError('Invalid solve method!')
@@ -247,18 +258,21 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             for sp_id, sp in enumerate(cp.sub_process_list):
                 assert sp.trajectory, '{}-{} does not have a Cartesian plan found!'.format(cp, sp)
                 if sp_id == 0:
-                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, tag='approach'))
+                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
+                                              is_reverse=reverse_flags[cp.element_identifier], tag='approach'))
                 elif sp_id == 1:
-                    print_trajs[cp_id].append(PrintTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, tag=extrusion_tag))
+                    print_trajs[cp_id].append(PrintTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
+                                              is_reverse=reverse_flags[cp.element_identifier], tag=extrusion_tag))
                 else:
-                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier, tag='retreat'))
+                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
+                                              is_reverse=reverse_flags[cp.element_identifier], tag='retreat'))
     full_trajs = print_trajs
 
     # * transition motion planning between extrusions
     return2idle = True
     transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                    disabled_collisions=disabled_self_collisions,
-                                                                   obstacles=[workspace], return2idle=return2idle)
+                                                                   obstacles=[workspace], return2idle=return2idle, resolutions=[jt_res]*len(ik_joints))
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'
@@ -296,7 +310,7 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     file_path, _, result_file_name = extrusion_problem_path
 
     # * load shape (get nodal positions)
-    elements, node_points, ground_nodes = load_extrusion(file_path)
+    _, node_points, ground_nodes = load_extrusion(file_path)
 
     # * parse saved trajectory results
     here = os.path.dirname(__file__)

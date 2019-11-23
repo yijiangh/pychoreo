@@ -29,22 +29,27 @@ Unreleased
 * `from_data` methods for `Trajectory` and subclasses
 * tagging print processes with `ground`/`creation`/`connect` in the test function
 * infinite pose sampler added for extrusion case when using sparse ladder graph to solve
+* Added `max_valence_extrusion_direction_routing` to `extrusion.utils`
+* Added `reverse_flags` info to `add_collision_fns_from_seq` and extrusion's test
 
 **Minor**
 
 * `is_any_empty` utility function for checking ik sol list of lists
 * `reset_ee_pose_gen_fn` for easier resetting generator
+* Added print_table model in the `mit_3-412_workspace` URDF/SRDF
 
 **Fixed**
 
 * fix nested empty list detection bug in `is_any_empty`
 * add `disabled_collisions` argument to the extrusion transition_planner
+* Fixed `min_z` to `base_point` model transformation in `extrusion.parsing`
 
 **Changed**
 
 * extrusion export save `lin_path`'s poses as 4x4 tform matrix (there's some disagreement in quaterion in `compas.Frame.from_quat`?)
 * move extrusion test fixtures into a separate fixture module
 * ladder graph interface broken into `from_cartesian_process_list`, `from_cartesian_process`, `from_poses` to increase code reuse
+* Changed `sub_process_ids` specification in `prune_ee_feasible_directions`
 
 
 0.1.1

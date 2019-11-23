@@ -28,6 +28,9 @@ def load_extrusion(file_path, parse_layers=False, verbose=False):
     scale = LENGTH_SCALE_CONVERSION[json_data['unit']]
     elements = parse_elements(json_data, parse_layers)
     node_points = parse_node_points(json_data, scale)
+    min_z = np.min(node_points, axis=0)[2]
+    origin = parse_origin(json_data, scale)
+    node_points = [np.array([0, 0, -min_z]) + point + origin for point in node_points]
     ground_nodes = parse_ground_nodes(json_data)
     if verbose:
         print('Assembly: {} | Model: {} | Unit: {}'.format(
@@ -63,8 +66,7 @@ def parse_elements(json_data, parse_layers=False):
 
 
 def parse_node_points(json_data, scale=1.0):
-    origin = parse_origin(json_data, scale)
-    return [origin + parse_point(json_node['point'], scale=scale) for json_node in json_data['node_list']]
+    return [parse_point(json_node['point'], scale=scale) for json_node in json_data['node_list']]
 
 
 def parse_ground_nodes(json_data):
