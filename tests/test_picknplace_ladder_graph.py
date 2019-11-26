@@ -10,7 +10,7 @@ from compas_fab.assembly.datastructures import Assembly, UnitGeometry, Grasp
 
 from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
     reset_simulation, disconnect, set_camera_pose, remove_handles
-from pybullet_planning import interpolate_poses, multiply, unit_pose, get_relative_pose
+from pybullet_planning import multiply, unit_pose, get_relative_pose, invert
 from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
@@ -21,6 +21,8 @@ from pychoreo.process_model.cartesian_process import CartesianProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
 from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_process_list
+
+from pychoreo_examples.picknplace.utils import build_picknplace_cartesian_process_seq
 
 import ikfast_ur5
 
@@ -90,38 +92,26 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
         with WorldSaver():
             for element in elements.values():
                 with LockRenderer():
-                    handles = []
                     print(element)
                     for unit_geo in element.unit_geometries:
                         for pb_geo in unit_geo.pybullet_bodies:
                             print(pb_geo)
                             set_pose(pb_geo, random.choice(unit_geo.get_goal_frames(get_pb_pose=True)))
-                        # visualize end effector pose
-                        for initial_frame, pick_grasp in zip(unit_geo.get_initial_frames(get_pb_pose=True), unit_geo.pick_grasps):
-                            handles.extend(draw_pose(initial_frame, length=0.01))
-                            handles.extend(draw_pose(multiply(initial_frame, pick_grasp.get_object_from_approach_frame(get_pb_pose=True)), length=viz_len))
-                            handles.extend(draw_pose(multiply(initial_frame, pick_grasp.get_object_from_attach_frame(get_pb_pose=True)), length=viz_len))
-                            handles.extend(draw_pose(multiply(initial_frame, pick_grasp.get_object_from_retreat_frame(get_pb_pose=True)), length=viz_len))
-                        for goal_frame, place_grasp in zip(unit_geo.get_goal_frames(get_pb_pose=True), unit_geo.place_grasps):
-                            handles.extend(draw_pose(goal_frame, length=0.01))
-                            handles.extend(draw_pose(multiply(goal_frame, place_grasp.get_object_from_approach_frame(get_pb_pose=True)), length=viz_len))
-                            handles.extend(draw_pose(multiply(goal_frame, place_grasp.get_object_from_attach_frame(get_pb_pose=True)), length=viz_len))
-                            handles.extend(draw_pose(multiply(goal_frame, place_grasp.get_object_from_retreat_frame(get_pb_pose=True)), length=viz_len))
                 print('---------')
                 wait_for_user()
-                remove_handles(handles)
-
-    # # * create cartesian processes without a sequence being given, with random pose generators
-    # cart_process_dict = build_extrusion_cartesian_process(elements, node_points, robot, ik_fn, ik_joint_names,
-    #     base_link_name, extrusion_end_effector, tool_from_root, viz_step=False)
 
     # * load precomputed sequence / use assigned sequence
-    ## placeholder
+    element_seq = elements.keys()
 
     # * construct ignored body-body links for collision checking
     # in this case, including self-collision between links of the robot
     disabled_self_collisions = get_disabled_collisions(robot, disabled_self_collision_link_names)
     # and links between the robot and the workspace (e.g. robot_base_link to base_plate)
     extra_disabled_collisions = get_body_body_disabled_collisions(robot, workspace, workspace_robot_disabled_link_names)
+
+    # * create cartesian processes without a sequence being given, with random pose generators
+    cart_process_seq = build_picknplace_cartesian_process_seq(
+        elements, element_seq, robot, ik_fn, ik_joint_names,
+        base_link_name, ee_body, invert(root_from_tcp), viz_step=True)
 
     if has_gui() : wait_for_user()

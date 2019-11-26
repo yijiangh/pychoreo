@@ -8,18 +8,24 @@ class GenFn(object):
     def reset(self):
         self._archived_gen_fn, self._current_gen_fn = tee(self._archived_gen_fn)
 
-    def update_gen_fn(self, new_gen_fn):
-        self._archived_gen_fn, self._current_gen_fn = tee(new_gen_fn)
-
     @property
     def gen(self):
         return self._current_gen_fn
 
+####################################
+# Cartesian pose generator
+
+def get_pose_gen_fn(sample_gen_fn, compose_pose_fn, **kwargs):
+    for gen_sample in sample_gen_fn:
+        yield compose_pose_fn(gen_sample, **kwargs)
+
 class CartesianPoseGenFn(GenFn):
-    def __init__(self, base_path_pts, pose_gen_fn):
-        super(CartesianPoseGenFn, self).__init__(pose_gen_fn)
-        self._base_path_pts = base_path_pts
+    def __init__(self, sample_gen_fn, compose_pose_fn, **kwargs):
+        # static data used by the sample or compose fn that is not sampling-dependent
+        self._static_data = {}
+        self._static_data.update(kwargs)
+        super(CartesianPoseGenFn, self).__init__(get_pose_gen_fn(sample_gen_fn, compose_pose_fn, **kwargs))
 
     @property
-    def base_path_pts(self):
-        return self._base_path_pts
+    def static_data(self):
+        return self._static_data

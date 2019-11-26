@@ -4,7 +4,6 @@ from copy import copy
 from itertools import product, tee
 
 from pybullet_planning import multiply, set_pose, get_movable_joints, joints_from_names
-from pybullet_planning import get_collision_fn, get_floating_body_collision_fn
 
 from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 
@@ -235,47 +234,3 @@ class CartesianProcess(object):
 
     def __repr__(self):
         return 'cart process-{}|E#{}|sp#{}'.format(self.process_name, self.element_identifier, len(self.sub_process_list))
-
-##################################################
-
-def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_fn, ee_body,
-                                 self_collisions=True, disabled_collisions={},
-                                 obstacles=[], extra_disabled_collisions={},
-                                 sub_process_ids=None,
-                                 tool_from_root=None, check_ik=False):
-    # only take the positional part
-    sampled_poses = cartesian_process.sample_ee_poses(copy_iter=True)
-    way_points = [[p[0] for p in sp_poses] for sp_poses in sampled_poses]
-    ee_collision_fn = get_floating_body_collision_fn(ee_body, obstacles,
-                                                     disabled_collisions=disabled_collisions)
-
-    assert len(way_points) == len(cartesian_process.sub_process_list), 'sampled ee poses must have the same number of lists with the number of sub_processes!'
-    if not sub_process_ids:
-        sub_process_ids = list(zip(range(len(cartesian_process.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in way_points]))
-    else:
-        for sp_id, sp_pair in enumerate(sub_process_ids):
-            if len(sp_pair[1]) == 0:
-                sub_process_ids[sp_id] = (sp_pair[0], [pt_id for pt_id in range(len(way_points[sp_pair[0]]))])
-                # TODO: sanity check specified pt_ids
-
-    fmap_ids = list(range(len(free_pose_map)))
-    random.shuffle(fmap_ids)
-    for i in fmap_ids:
-        if free_pose_map[i]:
-            direction_pose = ee_pose_map_fn(i)
-            way_poses = [[(pt, direction_pose[1]) for pt in sp_way_points] for sp_way_points in way_points]
-            for sp_id, pt_ids in sub_process_ids:
-                for pt_id in pt_ids:
-                    pose = way_poses[sp_id][pt_id]
-                    # transform TCP to EE tool base link
-                    if tool_from_root:
-                        pose = multiply(pose, tool_from_root)
-                    # check pairwise collision between the EE and collision objects
-                    is_colliding = ee_collision_fn(pose)
-                    if not is_colliding and check_ik:
-                        raise NotImplementedError
-                    if is_colliding:
-                        free_pose_map[i] = 0
-                        break
-                    # wait_for_user()
-    return free_pose_map
