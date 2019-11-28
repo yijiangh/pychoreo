@@ -51,6 +51,13 @@
       </geometry>
     </collision>
   </link>
+  <link name="print_table">
+    <collision>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/print_table.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </collision>
+  </link>
 
   <joint name="workspace_baselink_to_MIT_3412_robot_base_plate" type="fixed">
     <parent link="workspace_base_link"/>
@@ -86,6 +93,11 @@
     <parent link="workspace_base_link"/>
     <child link="MIT_3412_right_wall"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+  <joint name="workspace_baselink_to_print_table" type="fixed">
+    <parent link="workspace_base_link"/>
+    <child link="print_table"/>
+    <origin rpy="0 0 0" xyz="0.7 0 0.025"/>
   </joint>
 
   <!-- end of link list -->

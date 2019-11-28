@@ -1,10 +1,11 @@
 # * pychoreo
 # safelist
-branches:
-  only:
-  - dev
-  - feature/pb_con_integration
-#   - master
+# branches:
+#   only:
+#   - dev
+#   - feature/pb_con_integration
+# #   - master
+#   except:
 
 language: python
 

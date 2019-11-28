@@ -3,8 +3,7 @@ import warnings
 from copy import copy
 from itertools import product, tee
 
-from pybullet_planning import multiply, set_pose, get_movable_joints, joints_from_names
-from pybullet_planning import get_collision_fn, get_floating_body_collision_fn
+from pybullet_planning import multiply, set_pose, get_movable_joints, joints_from_names, get_joint_limits, snap_sols
 
 from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 
@@ -82,6 +81,7 @@ class CartesianSubProcess(object):
 
     @collision_fn.setter
     def collision_fn(self, collision_fn_):
+        # Note: collision_fn in the subprocess should not be sample-dependent!
         self._collision_fn = collision_fn_
 
     @property
@@ -107,7 +107,7 @@ class CartesianProcess(object):
     def __init__(self, process_name='',
         robot=None, ik_joint_names=[], sub_process_list=[],
         ee_pose_gen_fn=_NULL_EE_POSE_GEN_FN, sample_ik_fn=_NULL_SAMPLE_IK_FN,
-        element_identifier=None):
+        element_identifier=None, target_conf=None):
 
         self._process_name = process_name
         self._robot = robot
@@ -117,6 +117,7 @@ class CartesianProcess(object):
         self._sample_ik_fn = sample_ik_fn
         self._element_id = element_identifier
         self._trajectory = None
+        self._target_conf = target_conf
 
         # TODO: add a trigger to "renew" the sample ee iterator in case we want to sample the poses again
 
@@ -139,6 +140,10 @@ class CartesianProcess(object):
     @property
     def ik_joints(self):
         return joints_from_names(self.robot, self.ik_joint_names)
+
+    @property
+    def ik_joint_limits(self):
+        return [get_joint_limits(self.robot, jt) for jt in self.ik_joints]
 
     @property
     def sub_process_list(self):
@@ -193,6 +198,14 @@ class CartesianProcess(object):
     def reset_ee_pose_gen_fn(self):
         self.ee_pose_gen_fn.reset()
 
+    @property
+    def target_conf(self):
+        return self._target_conf
+
+    @target_conf.setter
+    def target_conf(self, target_conf_):
+        self._target_conf = target_conf_
+
     def sample_ee_poses(self, tool_from_root=None, copy_iter=False):
         if not copy_iter:
             ee_poses = next(self.ee_pose_gen_fn.gen)
@@ -226,6 +239,8 @@ class CartesianProcess(object):
         for sp_id, pt_ids in sp_pt_ids:
             for pt_id in pt_ids:
                 jt_list = self.sample_ik_fn(ee_poses[sp_id][pt_id])
+                if self.target_conf:
+                    jt_list = snap_sols(jt_list, self.target_conf, self.ik_joint_limits)
                 if check_collision:
                     jt_list = [jts for jts in jt_list if jts and not self.sub_process_list[sp_id].collision_fn(jts, diagnosis=diagnosis)]
                     if pt_id in self.sub_process_list[sp_id].pointwise_collision_fns:
@@ -235,42 +250,3 @@ class CartesianProcess(object):
 
     def __repr__(self):
         return 'cart process-{}|E#{}|sp#{}'.format(self.process_name, self.element_identifier, len(self.sub_process_list))
-
-##################################################
-
-def prune_ee_feasible_directions(cartesian_process, free_pose_map, ee_pose_map_fn, ee_body,
-                                 check_all=True, pt_ids=[],
-                                 self_collisions=True, disabled_collisions={},
-                                 obstacles=[], extra_disabled_collisions={},
-                                 tool_from_root=None, check_ik=False):
-    # only take the positional part
-    sampled_poses = cartesian_process.sample_ee_poses(copy_iter=True)
-    way_points = [[p[0] for p in sp_poses] for sp_poses in sampled_poses]
-    ee_collision_fn = get_floating_body_collision_fn(ee_body, obstacles,
-                                                     disabled_collisions=disabled_collisions)
-
-    assert len(way_points) == len(cartesian_process.sub_process_list), 'sampled ee poses must have the same number of lists with the number of sub_processes!'
-    if check_all:
-        sp_pt_ids = list(zip(range(len(cartesian_process.sub_process_list)), [list(range(len(sp_poses))) for sp_poses in way_points]))
-
-    fmap_ids = list(range(len(free_pose_map)))
-    random.shuffle(fmap_ids)
-    for i in fmap_ids:
-        if free_pose_map[i]:
-            direction_pose = ee_pose_map_fn(i)
-            way_poses = [[(pt, direction_pose[1]) for pt in sp_way_points] for sp_way_points in way_points]
-            for sp_id, pt_ids in sp_pt_ids:
-                for pt_id in pt_ids:
-                    pose = way_poses[sp_id][pt_id]
-                    # transform TCP to EE tool base link
-                    if tool_from_root:
-                        pose = multiply(pose, tool_from_root)
-                    # check pairwise collision between the EE and collision objects
-                    is_colliding = ee_collision_fn(pose)
-                    if not is_colliding and check_ik:
-                        raise NotImplementedError
-                    if is_colliding:
-                        free_pose_map[i] = 0
-                        break
-                    # wait_for_user()
-    return free_pose_map

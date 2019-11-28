@@ -273,7 +273,7 @@ class SparseLadderGraph(object):
         if verbose: print('Sparse ladder graph done: rrt* sol cost: {}'.format(rrt_cost))
         return rrt_cost
 
-    def extract_solution(self, check_collision=True, verbose=False, warning_pause=False):
+    def extract_solution(self, start_conf=None, check_collision=True, verbose=False, warning_pause=False):
         """extract ladder graph solution out of a solved sparse path
 
         Returns
@@ -302,6 +302,12 @@ class SparseLadderGraph(object):
 
         # * horizontally concatenate the graphs
         unified_graph = LadderGraph(unit_ladder_graph.dof)
+        if start_conf:
+            assert len(start_conf) == unit_ladder_graph.dof
+            st_graph = LadderGraph(unit_ladder_graph.dof)
+            st_graph.resize(1)
+            st_graph.assign_rung(0, [start_conf])
+            unified_graph = append_ladder_graph(unified_graph, st_graph)
         for cp_id in sorted(graph_dict):
             g = graph_dict[cp_id]
             unified_graph = append_ladder_graph(unified_graph, g)
@@ -313,6 +319,8 @@ class SparseLadderGraph(object):
         min_cost = dag_search.run()
         tot_traj = dag_search.shortest_path()
         if verbose: print('DAG search done in {} secs, cost {}.'.format(time.time()-st_time, min_cost))
+        if start_conf:
+            del tot_traj[0]
 
         # * Divide the contatenated trajectory back to processes
         proc_trajs = divide_list_chunks(tot_traj, [graph_dict[cp_id].size for cp_id in sorted(graph_dict)])
@@ -321,5 +329,8 @@ class SparseLadderGraph(object):
             # divide into subprocesses
             subp_trajs = divide_list_chunks(proc_traj, [sp.path_point_size for sp in self.cart_proc_list[cp_id].sub_process_list])
             for sp, subp_traj in zip(self.cart_proc_list[cp_id].sub_process_list, subp_trajs):
-                sp.trajectory = Trajectory(self.cart_proc_list[cp_id].robot, self.cart_proc_list[cp_id].ik_joints, subp_traj)
+                if sp.trajectory is None:
+                    sp.trajectory = Trajectory(self.cart_proc_list[cp_id].robot, self.cart_proc_list[cp_id].ik_joints, subp_traj)
+                else:
+                    sp.trajectory.traj_path = subp_traj
         return self.cart_proc_list

@@ -28,6 +28,9 @@ def load_extrusion(file_path, parse_layers=False, verbose=False):
     scale = LENGTH_SCALE_CONVERSION[json_data['unit']]
     elements = parse_elements(json_data, parse_layers)
     node_points = parse_node_points(json_data, scale)
+    min_z = np.min(node_points, axis=0)[2]
+    origin = parse_origin(json_data, scale)
+    node_points = [np.array([0, 0, -min_z]) + point + origin for point in node_points]
     ground_nodes = parse_ground_nodes(json_data)
     if verbose:
         print('Assembly: {} | Model: {} | Unit: {}'.format(
@@ -63,8 +66,7 @@ def parse_elements(json_data, parse_layers=False):
 
 
 def parse_node_points(json_data, scale=1.0):
-    origin = parse_origin(json_data, scale)
-    return [origin + parse_point(json_node['point'], scale=scale) for json_node in json_data['node_list']]
+    return [parse_point(json_node['point'], scale=scale) for json_node in json_data['node_list']]
 
 
 def parse_ground_nodes(json_data):
@@ -100,39 +102,6 @@ def create_elements_bodies(node_points, elements, radius=0.0015, shrink=0.002, c
     return element_bodies
 
 ##################################################
-
-def export_trajectory(save_dir, trajs, ee_link_name, overwrite=True, shape_file_path='', indent=None, include_robot_data=True, include_link_path=True):
-    if include_robot_data and include_link_path:
-        assert is_connected(), 'needs to be connected to a pybullet client to get robot/FK data'
-
-    if os.path.exists(shape_file_path):
-        with open(shape_file_path, 'r') as f:
-            shape_data = json.loads(f.read())
-        if 'model_name' in shape_data:
-            file_name = shape_data['model_name']
-        else:
-            file_name = shape_file_path.split('.json')[-2].split(os.sep)[-1]
-    else:
-        file_name = 'pychoreo_result'
-        overwrite = False
-
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    data = OrderedDict()
-    data['assembly_type'] = 'extrusion'
-    data['file_name'] = file_name
-    data['write_time'] = str(datetime.datetime.now())
-
-    data['trajectory'] = []
-    for cp_id, cp_trajs in enumerate(trajs):
-        for sp_traj in cp_trajs:
-            ee_link_path = sp_traj.get_link_path(ee_link_name)
-        data['trajectory'].append([sp_traj.to_data(include_robot_data=True, include_link_path=True) for sp_traj in cp_trajs])
-
-    full_save_path = os.path.join(save_dir, '{}_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
-    with open(full_save_path, 'w') as f:
-        json.dump(data, f, indent=indent)
 
 def parse_saved_trajectory(file_path):
     with open(file_path, 'r')  as f:

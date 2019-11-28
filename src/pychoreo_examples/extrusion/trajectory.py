@@ -37,15 +37,13 @@ class PrintTrajectory(Trajectory):
     def from_data(cls, data):
         # TODO: trying to use the following but fail...
         # traj = super(PrintBufferTrajectory, cls).from_data(data)
-        try:
-            if not is_connected():
-                raise ValueError('pybullet not connected!')
-            robot = body_from_name(data['robot_name'])
-            joints = joints_from_names(robot, data['joints_name'])
-        except ValueError:
+        if not is_connected():
             warnings.warn('Pybullet environment not connected or body/joints not found, robot and joints kept as names.')
             robot = data['robot_name']
             joints = data['joints_name']
+        else:
+            robot = body_from_name(data['robot_name'])
+            joints = joints_from_names(robot, data['joints_name'])
         traj_path = data['traj_path']
         return cls(robot, joints, traj_path, data['element'], data['is_reverse'], data['tag'])
 
@@ -87,15 +85,13 @@ class PrintBufferTrajectory(Trajectory):
     def from_data(cls, data):
         # TODO: trying to use the following but fail...
         # traj = super(PrintBufferTrajectory, cls).from_data(data)
-        try:
-            if not is_connected():
-                raise ValueError('pybullet not connected!')
-            robot = body_from_name(data['robot_name'])
-            joints = joints_from_names(robot, data['joints_name'])
-        except ValueError:
+        if not is_connected():
             warnings.warn('Pybullet environment not connected or body/joints not found, robot and joints kept as names.')
             robot = data['robot_name']
             joints = data['joints_name']
+        else:
+            robot = body_from_name(data['robot_name'])
+            joints = joints_from_names(robot, data['joints_name'])
         traj_path = data['traj_path']
         return cls(robot, joints, traj_path, data['element'], data['is_reverse'], data['tag'])
 

@@ -23,6 +23,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
             tr_end_conf = initial_conf
         else:
             break
+        # TODO: can use robot, joints from the trajectory class itself as well
         set_joint_positions(robot, ik_joints, tr_start_conf)
         tr_path = plan_joint_motion(robot, ik_joints, tr_end_conf,
                                     obstacles=obstacles + built_obstacles,

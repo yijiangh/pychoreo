@@ -103,7 +103,7 @@ def display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, 
         return
 
     print('Ready to start simulation of the planned Trajectory.')
-    wait_for_user()
+    # wait_for_user()
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
