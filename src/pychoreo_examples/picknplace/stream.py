@@ -147,13 +147,13 @@ def build_picknplace_cartesian_process_seq(
                          CartesianSubProcess(sub_process_name='place_retreat', collision_fn=place_retreat_collision_fn)]
 
         # create trajectory containers for subprocesses
-        pnp_sub_procs[0].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, attachments=ee_attachs,
+        pnp_sub_procs[0].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, ee_attachments=ee_attachs,
             tag='pick_approach', element_id=e_id, element_info=repr(element))
-        pnp_sub_procs[1].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, attachments=ee_attachs,
+        pnp_sub_procs[1].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, ee_attachments=ee_attachs,
             tag='pick_retreat', element_id=e_id, element_info=repr(element))
-        pnp_sub_procs[2].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, attachments=ee_attachs,
+        pnp_sub_procs[2].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, ee_attachments=ee_attachs,
             tag='place_approach', element_id=e_id, element_info=repr(element))
-        pnp_sub_procs[3].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, attachments=ee_attachs,
+        pnp_sub_procs[3].trajectory = PicknPlaceBufferTrajectory(robot, ik_joints, None, ee_attachments=ee_attachs,
             tag='place_retreat', element_id=e_id, element_info=repr(element))
 
         process_name = 'picknplace-E#{}'.format(e_id)

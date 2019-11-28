@@ -10,7 +10,7 @@ from pychoreo.cartesian_planner.dag_search import DAGSearch
 from pychoreo.cartesian_planner.postprocessing import divide_list_chunks
 from pychoreo.process_model.trajectory import Trajectory
 
-def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, check_collision=True, verbose=False, viz_inspect=False, warning_pause=True):
+def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, start_conf=None, check_collision=True, verbose=False, viz_inspect=False, warning_pause=True):
     world_saver = WorldSaver()
     st_time = time.time()
     if verbose: print('Start building ladder graph.')
@@ -32,6 +32,12 @@ def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, check_collisi
 
     # * horizontally concatenate the graphs
     unified_graph = LadderGraph(vertical_graph.dof)
+    if start_conf:
+        assert len(start_conf) == vertical_graph.dof
+        st_graph = LadderGraph(vertical_graph.dof)
+        st_graph.resize(1)
+        st_graph.assign_rung(0, [start_conf])
+        unified_graph = append_ladder_graph(unified_graph, st_graph)
     for cp_id in sorted(graph_dict):
         g = graph_dict[cp_id]
         unified_graph = append_ladder_graph(unified_graph, g)
@@ -43,6 +49,8 @@ def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, check_collisi
     min_cost = dag_search.run()
     tot_traj = dag_search.shortest_path()
     if verbose: print('DAG search done in {} secs, cost {}.'.format(time.time()-st_time, min_cost))
+    if start_conf:
+        del tot_traj[0]
 
     # * Divide the contatenated trajectory back to processes
     proc_trajs = divide_list_chunks(tot_traj, [g.size for g in graph_dict.values()])

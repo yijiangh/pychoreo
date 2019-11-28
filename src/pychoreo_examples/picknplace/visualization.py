@@ -60,21 +60,19 @@ def display_picknplace_trajectories(robot_urdf, ik_joint_names,
 
     print('Ready to start simulation of the planned Trajectory.')
     for cp_id, cp_trajs in enumerate(trajectories):
-        element_attachs = []
         for trajectory in cp_trajs:
-            for conf_id, conf in enumerate(trajectory.traj_path):
+            print(trajectory)
+
+            for conf in trajectory.traj_path:
                 set_joint_positions(trajectory.robot, trajectory.joints, conf)
+                for ee_attach in trajectory.ee_attachments:
+                    ee_attach.child = ee_body
+                    ee_attach.assign()
+                for attach in trajectory.attachments:
+                    attach.child = elements[trajectory.element_id].unit_geometries[0].pybullet_bodies[0]
+                    attach.assign()
 
                 if isinstance(trajectory, PicknPlaceBufferTrajectory):
-                    for attach in trajectory.attachments:
-                        if isinstance(attach.child, str):
-                            if attach.child == 'body2':
-                                attach.child = ee_body
-                            else:
-                                # TODO: temporal workaround...
-                                attach.child = elements[trajectory.element_id].unit_geometries[0].pybullet_bodies[0]
-                        attach.assign()
-
                     if cart_time_step is None:
                         wait_for_user()
                     else:

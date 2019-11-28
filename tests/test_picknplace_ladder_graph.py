@@ -15,7 +15,7 @@ from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose, Attachment
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
     draw_pose, set_pose, set_joint_positions, dump_world, create_obj, get_body_body_disabled_collisions, get_link_pose, \
-    create_attachment, set_pose, get_pose
+    create_attachment, set_pose, get_pose, link_from_name, BASE_LINK
 
 from pychoreo.process_model.cartesian_process import CartesianProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
@@ -28,6 +28,7 @@ from pychoreo_examples.picknplace.stream import build_picknplace_cartesian_proce
 from pychoreo_examples.picknplace.trajectory import PicknPlaceBufferTrajectory
 from pychoreo_examples.picknplace.visualization import display_picknplace_trajectories
 from pychoreo_examples.picknplace.parsing import parse_saved_trajectory
+from pychoreo_examples.picknplace.transition_planner import solve_transition_between_picknplace_processes
 
 import ikfast_ur5
 
@@ -46,6 +47,7 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
     step_num = 5
     sample_time = 5
     sparse_time_out = 2
+    jt_res = 0.1
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -123,14 +125,18 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
                     for unit_geo in element.unit_geometries:
                         for pb_geo in unit_geo.pybullet_bodies:
                             set_pose(pb_geo, random.choice(unit_geo.get_goal_frames(get_pb_pose=True)))
-                print('---------')
-                wait_for_user()
+                # print('---------')
+                # wait_for_user()
+        wait_for_user()
 
     # * construct ignored body-body links for collision checking
     # in this case, including self-collision between links of the robot
     disabled_self_collisions = get_disabled_collisions(robot, disabled_self_collision_link_names)
     # and links between the robot and the workspace (e.g. robot_base_link to base_plate)
     extra_disabled_collisions = get_body_body_disabled_collisions(robot, workspace, workspace_robot_disabled_link_names)
+    extra_disabled_collisions.add(
+        ((robot, link_from_name(robot, 'wrist_3_link')), (ee_body, BASE_LINK))
+        )
 
     # * create cartesian processes without a sequence being given, with random pose generators
     cart_process_seq = build_picknplace_cartesian_process_seq(
@@ -141,19 +147,23 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
         obstacles=[workspace],extra_disabled_collisions=extra_disabled_collisions,
         tool_from_root=invert(root_from_tcp), viz_step=False, pick_from_same_rack=True)
 
+    # specifically for UR5, because of its wide joint range, we need to apply joint value snapping
+    for cp in cart_process_seq:
+        cp.target_conf = robot_start_conf
+
     viz_inspect = False
     with LockRenderer(not viz_inspect):
         if solve_method == 'ladder_graph':
             print('\n'+'#' * 10)
             print('Solving with the vanilla ladder graph search algorithm.')
             cart_process_seq = solve_ladder_graph_from_cartesian_process_list(cart_process_seq,
-                verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True)
+                verbose=True, warning_pause=False, viz_inspect=viz_inspect, check_collision=True, start_conf=robot_start_conf)
         elif solve_method == 'sparse_ladder_graph':
             print('\n'+'#' * 10)
             print('Solving with the sparse ladder graph search algorithm.')
             sparse_graph = SparseLadderGraph(cart_process_seq)
             sparse_graph.find_sparse_path(verbose=True, vert_timeout=sample_time, sparse_sample_timeout=sparse_time_out)
-            cart_process_seq = sparse_graph.extract_solution(verbose=True)
+            cart_process_seq = sparse_graph.extract_solution(verbose=True, start_conf=robot_start_conf)
         else:
             raise ValueError('Invalid solve method!')
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
@@ -163,7 +173,7 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
             element_attachs = []
             for sp_id, sp in enumerate(cp.sub_process_list):
                 assert sp.trajectory, '{}-{} does not have a Cartesian plan found!'.format(cp, sp)
-                # reverse engineer the grasp pose
+                # ! reverse engineer the grasp pose
                 if sp.trajectory.tag == 'pick_retreat':
                     unit_geo = elements[sp.trajectory.element_id].unit_geometries[0]
                     e_bodies = unit_geo.pybullet_bodies
@@ -171,14 +181,31 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
                         set_pose(e_body, unit_geo.get_initial_frames(get_pb_pose=True)[0])
                         set_joint_positions(sp.trajectory.robot, sp.trajectory.joints, sp.trajectory.traj_path[0])
                         element_attachs.append(create_attachment(sp.trajectory.robot, root_link, e_body))
+
                 if sp.trajectory.tag == 'pick_retreat' or sp.trajectory.tag == 'place_approach':
-                    sp.trajectory.attachments= sp.trajectory.attachments + element_attachs
+                    sp.trajectory.attachments= element_attachs
                 pnp_trajs[cp_id].append(sp.trajectory)
     full_trajs = pnp_trajs
 
+    # * transition motion planning between extrusions
+    return2idle = True
+    transition_traj = solve_transition_between_picknplace_processes(pnp_trajs, elements, robot_start_conf,
+                                                                    disabled_collisions=disabled_self_collisions,
+                                                                    extra_disabled_collisions=extra_disabled_collisions,
+                                                                    obstacles=[workspace], return2idle=return2idle,
+                                                                    resolutions=[jt_res]*len(ik_joints))
+
+    # * weave the Cartesian and transition processses together
+    for cp_id, print_trajs in enumerate(full_trajs):
+        print_trajs.insert(0, transition_traj[cp_id][0])
+        print_trajs.insert(3, transition_traj[cp_id][1])
+    if return2idle:
+        full_trajs[-1].append(transition_traj[-1][-1])
+
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
-    export_trajectory(save_dir, full_trajs, ee_link_name, indent=None, shape_file_path=pkg_json_path, include_robot_data=True, include_link_path=False)
+    export_trajectory(save_dir, full_trajs, ee_link_name, indent=None, shape_file_path=pkg_json_path,
+        include_robot_data=True, include_link_path=False)
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()
