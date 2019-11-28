@@ -81,6 +81,7 @@ class CartesianSubProcess(object):
 
     @collision_fn.setter
     def collision_fn(self, collision_fn_):
+        # Note: collision_fn in the subprocess should not be sample-dependent!
         self._collision_fn = collision_fn_
 
     @property

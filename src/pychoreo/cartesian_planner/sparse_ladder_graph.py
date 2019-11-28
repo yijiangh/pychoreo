@@ -321,5 +321,8 @@ class SparseLadderGraph(object):
             # divide into subprocesses
             subp_trajs = divide_list_chunks(proc_traj, [sp.path_point_size for sp in self.cart_proc_list[cp_id].sub_process_list])
             for sp, subp_traj in zip(self.cart_proc_list[cp_id].sub_process_list, subp_trajs):
-                sp.trajectory = Trajectory(self.cart_proc_list[cp_id].robot, self.cart_proc_list[cp_id].ik_joints, subp_traj)
+                if sp.trajectory is None:
+                    sp.trajectory = Trajectory(self.cart_proc_list[cp_id].robot, self.cart_proc_list[cp_id].ik_joints, subp_traj)
+                else:
+                    sp.trajectory.traj_path = subp_traj
         return self.cart_proc_list

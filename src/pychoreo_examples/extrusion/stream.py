@@ -11,12 +11,15 @@ from pybullet_planning import INF
 from pybullet_planning import set_pose, multiply, pairwise_collision, get_collision_fn, joints_from_names, \
     get_disabled_collisions, interpolate_poses, get_moving_links, get_body_body_disabled_collisions, interval_generator
 from pybullet_planning import RED, Pose, Euler, unit_pose
+from pybullet_planning import get_collision_fn, get_floating_body_collision_fn
 
 from pychoreo.utils.stream_utils import get_enumeration_pose_generator
 from pychoreo.process_model.cartesian_process import CartesianProcess, CartesianSubProcess
 from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 
-from pybullet_planning import get_collision_fn, get_floating_body_collision_fn
+from pychoreo_examples.extrusion.utils import is_ground
+from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
+
 
 ################################################
 
@@ -72,6 +75,7 @@ def build_extrusion_cartesian_process_sequence(
     e_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
     ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
 
+    node_visited_valence = {}
     cart_proc_seq = []
     for element in element_seq:
         n1, n2 = element
@@ -79,7 +83,7 @@ def build_extrusion_cartesian_process_sequence(
         if reverse_flags[element]:
             base_path_pts = base_path_pts[::-1]
 
-        extrusion_compose_fn = get_extrusion_ee_pose_compose_fn(interpolate_poses, approach_distance=0.01, pos_step_size=0.003)
+        extrusion_compose_fn = get_extrusion_ee_pose_compose_fn(interpolate_poses, approach_distance=approach_distance, pos_step_size=linear_step_size)
         full_path_pts = extrusion_compose_fn(unit_pose(), base_path_pts)
 
         if verbose : print('Pruning candidate poses for E#{}'.format(element))
@@ -126,6 +130,30 @@ def build_extrusion_cartesian_process_sequence(
                                CartesianSubProcess(sub_process_name='extrude', collision_fn=collision_fn),
                                CartesianSubProcess(sub_process_name='extrude-retreat', collision_fn=collision_fn)]
 
+        # subprocess tagging
+        n1_visited = n1 in node_visited_valence
+        n2_visited = n2 in node_visited_valence
+        if n1_visited:
+            node_visited_valence[n1] += 1
+        else:
+            node_visited_valence[n1] = 0
+        if n2_visited:
+            node_visited_valence[n2] += 1
+        else:
+            node_visited_valence[n2] = 0
+        if is_ground(element, ground_nodes):
+            extrusion_tag = 'ground'
+        else:
+            assert n1_visited or n2_visited, 'this element is floating!'
+            extrusion_tag = 'connect' if n1_visited and n2_visited else 'create'
+
+        extrusion_sub_procs[0].trajectory = PrintBufferTrajectory(robot, ik_joints, None, element,
+            is_reverse=reverse_flags[element], tag='approach')
+        extrusion_sub_procs[1].trajectory = PrintTrajectory(robot, ik_joints, None, element,
+            is_reverse=reverse_flags[element], tag=extrusion_tag)
+        extrusion_sub_procs[2].trajectory = PrintBufferTrajectory(robot, ik_joints, None, element,
+            is_reverse=reverse_flags[element], tag='retreat')
+
         # TODO: add pointwise collision fn to prevent last conf collides with the element currently printing
 
         process_name = 'extrusion-E{}'.format(element)
@@ -136,34 +164,7 @@ def build_extrusion_cartesian_process_sequence(
             element_identifier=element)
 
         cart_proc_seq.append(cart_process)
-
         built_obstacles = built_obstacles + [element_bodies[element]]
-
-        # import pychoreo_examples
-        # from pybullet_planning import set_pose, set_joint_positions, wait_for_user, has_gui, wait_for_user
-        # viz_step = True
-        # cart_process = cart_process_dict[element]
-        # # ee_poses = cart_process_dict[element].sample_ee_poses(reset_iter=True)
-        # print('\n$$$$$$$$$$$$$$\nenum gen fn viz')
-        # cnt = 0
-        # for ee_poses in cart_process.exhaust_iter():
-        #     if viz_step:
-        #         for sp_id, sp in enumerate(ee_poses):
-        #             for ee_p in sp:
-        #                 ee_p = multiply(ee_p, tool_from_root)
-        #                 set_pose(ee_body, ee_p)
-        #                 if has_gui(): wait_for_user()
-
-        #     ik_sols = cart_process.get_ik_sols(ee_poses, check_collision=False)
-        #     if viz_step:
-        #         for sp_id, sp_jt_sols in enumerate(ik_sols):
-        #             for jt_sols in sp_jt_sols:
-        #                 for jts in jt_sols:
-        #                     set_joint_positions(robot, ik_joints, jts)
-        #                     if has_gui(): wait_for_user()
-        #     cnt += 1
-        #     if cnt > 3 : break
-
     return cart_proc_seq, e_fmaps
 
 ##################################################

@@ -52,7 +52,10 @@ def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, check_collisi
         # divide into subprocesses
         subp_trajs = divide_list_chunks(proc_traj, [sp.path_point_size for sp in cart_proc_list[cp_id].sub_process_list])
         for sp, subp_traj in zip(cart_proc_list[cp_id].sub_process_list, subp_trajs):
-            sp.trajectory = Trajectory(cart_proc_list[cp_id].robot, cart_proc_list[cp_id].ik_joints, subp_traj)
+            if sp.trajectory is None:
+                sp.trajectory = Trajectory(cart_proc_list[cp_id].robot, cart_proc_list[cp_id].ik_joints, subp_traj)
+            else:
+                sp.trajectory.traj_path = subp_traj
     return cart_proc_list
 
 def generate_ladder_graph_from_cartesian_process(cart_proc, check_collision=True, viz_inspect=False):

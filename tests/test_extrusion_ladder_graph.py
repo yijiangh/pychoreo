@@ -18,16 +18,16 @@ from pychoreo.process_model.cartesian_process import CartesianProcess, Cartesian
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
 from pychoreo.process_model.gen_fn import CartesianPoseGenFn
 from pychoreo.utils.stream_utils import get_random_direction_generator, get_enumeration_pose_generator
+from pychoreo.utils.parsing_utils import export_trajectory
 from pychoreo.cartesian_planner.ladder_graph_interface import solve_ladder_graph_from_cartesian_process_list
 from pychoreo.cartesian_planner.sparse_ladder_graph import SparseLadderGraph
 
 import pychoreo_examples
-from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies, export_trajectory, parse_saved_trajectory
+from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies, parse_saved_trajectory
 from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw_extrusion_sequence, display_trajectories
 from pychoreo_examples.extrusion.stream import get_extrusion_ee_pose_compose_fn, get_ee_pose_enumerate_map_fn, \
     build_extrusion_cartesian_process_sequence
-from pychoreo_examples.extrusion.utils import is_ground, max_valence_extrusion_direction_routing
-from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
+from pychoreo_examples.extrusion.utils import max_valence_extrusion_direction_routing
 from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
 import ikfast_kuka_kr6_r900
@@ -92,9 +92,9 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
     return cart_traj_dict
 
 @pytest.mark.extrusion
-@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -167,7 +167,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     print('reverse flags: ', reverse_flags)
 
     sample_time = 10
-    sparse_time_out = 10
+    sparse_time_out = 2
     roll_disc = 20
     pitch_disc = 20
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
@@ -180,32 +180,31 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # and links between the robot and the workspace (e.g. robot_base_link to base_plate)
     extra_disabled_collisions = get_body_body_disabled_collisions(robot, workspace, workspace_robot_disabled_link_names)
 
-    with WorldSaver():
-        ee_body = load_extrusion_end_effector(extrusion_end_effector)
-        ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
+    ee_body = load_extrusion_end_effector(extrusion_end_effector)
+    ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
 
-        # * building collision function based on the given sequence
-        with LockRenderer(False):
-            cart_process_seq, e_fmaps = build_extrusion_cartesian_process_sequence(
-                element_sequence, element_bodies, node_points, ground_nodes,
-                robot, ik_joint_names, sample_ik_fn, ee_body,
-                roll_disc=roll_disc, pitch_disc=pitch_disc, yaw_sample_size=yaw_sample_size, sample_time=sample_time,
-                linear_step_size=linear_step_size, tool_from_root=tool_from_root,
-                self_collisions=True, disabled_collisions=disabled_self_collisions,
-                obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
-                reverse_flags=reverse_flags, verbose=True)
+    # * building collision function based on the given sequence
+    with LockRenderer(False):
+        cart_process_seq, e_fmaps = build_extrusion_cartesian_process_sequence(
+            element_sequence, element_bodies, node_points, ground_nodes,
+            robot, ik_joint_names, sample_ik_fn, ee_body,
+            roll_disc=roll_disc, pitch_disc=pitch_disc, yaw_sample_size=yaw_sample_size, sample_time=sample_time,
+            linear_step_size=linear_step_size, tool_from_root=tool_from_root,
+            self_collisions=True, disabled_collisions=disabled_self_collisions,
+            obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
+            reverse_flags=reverse_flags, verbose=True)
 
-        assert isinstance(cart_process_seq, list)
-        assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
-        assert all([cart.element_identifier == e for cart, e in zip(cart_process_seq, element_sequence)])
+    assert isinstance(cart_process_seq, list)
+    assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
+    assert all([cart.element_identifier == e for cart, e in zip(cart_process_seq, element_sequence)])
 
-        # * draw the pruned EE direction set
-        if has_gui():
-            # just move the element bodies and ee_body away to clear the visualized scene
-            set_pose(ee_body, unit_pose())
-            for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
-            draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-                                    line_width=5, direction_len=0.005, time_step=INF)
+    # * draw the pruned EE direction set
+    if has_gui():
+        # just move the element bodies and ee_body away to clear the visualized scene
+        set_pose(ee_body, unit_pose())
+        for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
+        draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
+                                line_width=5, direction_len=0.005, time_step=INF)
 
     viz_inspect = False
     with LockRenderer(not viz_inspect):
@@ -225,38 +224,12 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         assert all(isinstance(cp, CartesianProcess) for cp in cart_process_seq)
 
         # * extract trajectory from CartProcesses and add tags
-        node_visited_valence = {}
         print_trajs = [[] for _ in range(len(cart_process_seq))]
         for cp_id, cp in enumerate(cart_process_seq):
-            element = element_sequence[cp_id]
-            n1, n2 = element
-            # add tag info
-            n1_visited = n1 in node_visited_valence
-            n2_visited = n2 in node_visited_valence
-            if n1_visited:
-                node_visited_valence[n1] += 1
-            else:
-                node_visited_valence[n1] = 0
-            if n2_visited:
-                node_visited_valence[n2] += 1
-            else:
-                node_visited_valence[n2] = 0
-            if is_ground(element, ground_nodes):
-                extrusion_tag = 'ground'
-            else:
-                assert n1_visited or n2_visited, 'this element is floating!'
-                extrusion_tag = 'connect' if n1_visited and n2_visited else 'create'
             for sp_id, sp in enumerate(cp.sub_process_list):
                 assert sp.trajectory, '{}-{} does not have a Cartesian plan found!'.format(cp, sp)
-                if sp_id == 0:
-                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
-                                              is_reverse=reverse_flags[cp.element_identifier], tag='approach'))
-                elif sp_id == 1:
-                    print_trajs[cp_id].append(PrintTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
-                                              is_reverse=reverse_flags[cp.element_identifier], tag=extrusion_tag))
-                else:
-                    print_trajs[cp_id].append(PrintBufferTrajectory.from_trajectory(sp.trajectory, cp.element_identifier,
-                                              is_reverse=reverse_flags[cp.element_identifier], tag='retreat'))
+                print_trajs[cp_id].append(sp.trajectory)
+                print(sp.trajectory)
     full_trajs = print_trajs
 
     # * transition motion planning between extrusions
@@ -313,7 +286,7 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
 
     # parse with connect but robot body not added
     connect(use_gui=False)
-    with pytest.warns(UserWarning, match='Pybullet environment not connected*'):
+    with pytest.raises(ValueError):
         full_trajs = parse_saved_trajectory(save_file_path)
     disconnect()
 

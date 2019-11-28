@@ -13,7 +13,7 @@ def picknplace_problem_path():
     problem =  'dms_ws_tet_bars'
     here = os.path.dirname(__file__)
     pnp_file_path = os.path.join(here, '..', 'test_data', problem, 'json', problem + '.json')
-    return pnp_file_path
+    return pnp_file_path, problem + '_result_.json'
 
 @pytest.fixture
 def picknplace_robot_data():
@@ -56,4 +56,4 @@ def picknplace_end_effector():
 
 @pytest.fixture
 def picknplace_tcp_def():
-    return Pose(point=[1e-3 * 80.525, 0, 0])
+    return Pose(point=[1e-3 * 96, 0, 0])

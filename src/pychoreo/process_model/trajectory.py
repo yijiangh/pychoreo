@@ -56,15 +56,13 @@ class Trajectory(object):
 
     @classmethod
     def from_data(cls, data):
-        try:
-            if not is_connected():
-                raise ValueError('pybullet not connected!')
-            robot = body_from_name(data['robot_name'])
-            joints = joints_from_names(robot, data['joints_name'])
-        except ValueError:
+        if not is_connected():
             warnings.warn('Pybullet environment not connected or body/joints not found, robot and joints kept as names.')
             robot = data['robot_name']
             joints = data['joints_name']
+        else:
+            robot = body_from_name(data['robot_name'])
+            joints = joints_from_names(robot, data['joints_name'])
         traj_path = data['traj_path']
         tag = data['tag']
         # TODO: parse path_link as well
@@ -74,9 +72,13 @@ class Trajectory(object):
         return 'Traj{}|len#{}'.format(self.tag, len(self.traj_path))
 
 class MotionTrajectory(Trajectory):
-    def __init__(self, robot, joints, traj_path, attachments=[]):
+    def __init__(self, robot, joints, traj_path, attachments=None):
         super(MotionTrajectory, self).__init__(robot, joints, traj_path)
-        self.attachments = attachments
+        self._attachments = attachments or []
+
+    @property
+    def attachments(self):
+        return self._attachments
 
     @classmethod
     def from_trajectory(cls, traj, attachments=[]):
