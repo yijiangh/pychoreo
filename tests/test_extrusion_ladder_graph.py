@@ -12,7 +12,8 @@ from pybullet_planning import interpolate_poses, multiply, unit_pose, get_relati
 from pybullet_planning import interval_generator, sample_tool_ik
 from pybullet_planning import Pose, Point, Euler, unit_pose
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
-    draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions, create_obj
+    draw_pose, set_pose, set_joint_positions, dump_body, dump_world, get_body_body_disabled_collisions, create_obj, \
+    get_link_pose, clone_body
 
 from pychoreo.process_model.cartesian_process import CartesianProcess, CartesianSubProcess
 from pychoreo.process_model.trajectory import Trajectory, MotionTrajectory
@@ -39,7 +40,8 @@ def load_extrusion_end_effector(ee_urdf_path):
 
 def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn, ik_joint_names, base_link_name, extrusion_end_effector, tool_from_root=None, viz_step=False):
     # load EE body, for debugging purpose
-    ee_body = load_extrusion_end_effector(extrusion_end_effector)
+    orig_ee_body = load_extrusion_end_effector(extrusion_end_effector)
+    ee_body = clone_body(orig_ee_body, visual=False)
     ik_joints = joints_from_names(robot, ik_joint_names)
 
     cart_traj_dict = {}
@@ -108,7 +110,6 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
     # * printout bodies in the scene information
     # dump_world()
-    # if has_gui() : wait_for_user()
 
     initial_conf = [0.08, -1.57, 1.74, 0.08, 0.17, -0.08]
     set_joint_positions(robot, ik_joints, initial_conf)
@@ -118,6 +119,11 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     root_link = link_from_name(robot, tool_root_link_name)
     tool_link = link_from_name(robot, ee_link_name)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
+
+    if has_gui() :
+        tcp_pose = get_link_pose(robot, tool_link)
+        draw_pose(tcp_pose)
+        # wait_for_user()
 
     # * specify ik fn wrapper
     def get_sample_ik_fn(robot, ik_fn, ik_joint_names, base_link_name, tool_from_root=None):
@@ -150,7 +156,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # this is just a demonstration to help us do some sanity check with visualization
     with WorldSaver():
         _ = build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn, ik_joint_names,
-                base_link_name, extrusion_end_effector, tool_from_root, viz_step=False)
+                base_link_name, extrusion_end_effector, tool_from_root, viz_step=True)
 
     # * load precomputed sequence
     try:
