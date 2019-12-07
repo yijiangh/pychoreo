@@ -94,10 +94,21 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
     return cart_traj_dict
 
 @pytest.mark.extrusion
-# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
+    sample_time = 120
+    sparse_time_out = 25 # 60
+    roll_disc = 20
+    pitch_disc = 20
+    yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
+    linear_step_size = 0.003 # m
+    jt_res = 0.01 # 0.01
+    shrink = 0.01 # m
+    RRT_RESTARTS = 5
+    RRT_ITERATIONS = 40
+
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
         (workspace_urdf, workspace_robot_disabled_link_names) = extrusion_robot_data
@@ -148,15 +159,15 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         element_bodies = dict(zip(elements,
-            create_elements_bodies(node_points, elements, radius=0.002, shrink=0.0025)))
+            create_elements_bodies(node_points, elements, radius=0.002, shrink=shrink)))
         assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
     # * create cartesian processes without a sequence being given, with random pose generators
     # this is just a demonstration to help us do some sanity check with visualization
-    with WorldSaver():
-        _ = build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn, ik_joint_names,
-                base_link_name, extrusion_end_effector, tool_from_root, viz_step=True)
+    # with WorldSaver():
+    #     _ = build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn, ik_joint_names,
+    #             base_link_name, extrusion_end_effector, tool_from_root, viz_step=True)
 
     # * load precomputed sequence
     try:
@@ -171,14 +182,6 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # * compute reverse flags based on the precomputed sequence
     reverse_flags = max_valence_extrusion_direction_routing(element_sequence, elements, node_points, ground_nodes)
     print('reverse flags: ', reverse_flags)
-
-    sample_time = 10
-    sparse_time_out = 2
-    roll_disc = 20
-    pitch_disc = 20
-    yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
-    linear_step_size = 0.003 # mm
-    jt_res = 0.05
 
     # * construct ignored body-body links for collision checking
     # in this case, including self-collision between links of the robot
@@ -242,7 +245,9 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     return2idle = True
     transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                    disabled_collisions=disabled_self_collisions,
-                                                                   obstacles=[workspace], return2idle=return2idle, resolutions=[jt_res]*len(ik_joints))
+                                                                   obstacles=[workspace], return2idle=return2idle,
+                                                                   resolutions=[jt_res]*len(ik_joints),
+                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'

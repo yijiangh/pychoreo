@@ -97,7 +97,7 @@
   <joint name="workspace_baselink_to_print_table" type="fixed">
     <parent link="workspace_base_link"/>
     <child link="print_table"/>
-    <origin rpy="0 0 0" xyz="0.7 0 0.025"/>
+    <origin rpy="0 0 0" xyz="0.7 0 0.024"/>
   </joint>
 
   <!-- end of link list -->

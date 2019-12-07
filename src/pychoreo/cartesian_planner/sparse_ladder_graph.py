@@ -21,8 +21,7 @@ class CapVert(object):
         self._to_parent_cost = INF
         self._parent_vert = None
         self._ee_poses = []
-        # self.z_axis_angle = None
-        # self.quat_pose = None
+        self._preference_cost = 1.0 # smaller the more preferrable
 
     @property
     def host_rung_id(self):
@@ -56,7 +55,15 @@ class CapVert(object):
     def ee_poses(self, ee_poses_):
         self._ee_poses = ee_poses_
 
-    def distance_to(self, v):
+    @property
+    def preference_cost(self):
+        return self._preference_cost
+
+    @preference_cost.setter
+    def preference_cost(self, pc):
+        self._preference_cost = pc
+
+    def distance_to(self, v, to_parent=True):
         """compute distance to CapVert v.
         The distance is defined by ...
 
@@ -76,21 +83,29 @@ class CapVert(object):
         cost = INF
         dof = self.dof
         # TODO: maybe we can get rid of the dof and concatenation here
-        n_prev_end = int(len(v.end_jt_data) / dof)
-        n_this_st = int(len(self.st_jt_data) / dof)
+        if to_parent:
+            # first: v -> second: this
+            first_end_data = v.end_jt_data
+            second_st_data = self.st_jt_data
+        else:
+            # first: this -> second: v
+            first_end_data = self.end_jt_data
+            second_st_data = v.st_jt_data
+        n_first_end = int(len(first_end_data) / dof)
+        n_second_st = int(len(second_st_data) / dof)
 
-        for i in range(n_prev_end):
-            prev_end_id = i * dof
-            for j in range(n_this_st):
-                this_st_id = j * dof
+        for i in range(n_first_end):
+            first_end_id = i * dof
+            for j in range(n_second_st):
+                second_st_id = j * dof
                 delta_buffer = []
                 # TODO: assign weight on joints
                 for k in range(dof):
-                    delta_buffer.append(abs(v.end_jt_data[prev_end_id + k] - self.st_jt_data[this_st_id + k]))
+                    delta_buffer.append(abs(first_end_data[first_end_id + k] - second_st_data[second_st_id + k]))
                 tmp_cost = sum(delta_buffer)
                 if tmp_cost < cost:
                     cost = tmp_cost
-        return cost
+        return cost * self.preference_cost
 
     @property
     def parent_cost(self):
@@ -115,7 +130,7 @@ class CapVert(object):
         """
         assert(isinstance(v, CapVert) or v == None)
         self._parent_vert = v
-        self.parent_cost = self.distance_to(v)
+        self.parent_cost = self.distance_to(v, to_parent=True)
 
     def get_cost_to_root(self):
         prev_v = self.parent_vert
@@ -142,11 +157,6 @@ class CapRung(object):
         self._rung_id = rung_id
         self._cap_verts = []
         self._cart_proc = cart_proc
-        # self.path_pts = []
-        # # all the candidate orientations for each kinematics segment
-        # self.ee_dirs = []
-        # self.obstacles = [] # TODO: store index, point to a shared list of obstacles
-        # self.collision_fn = None
 
     @property
     def dof(self):
@@ -183,6 +193,10 @@ class CapRung(object):
             cap_vert.st_jt_data = [jv for jts in ik_sols[0][0] for jv in jts]
             cap_vert.end_jt_data = [jv for jts in ik_sols[-1][-1] for jv in jts]
             cap_vert.ee_poses = ee_poses
+            # when poses are sampled, we can assign a multiplier cost to the ee_pose
+            # to indicate preference over some pose over the other, and this information
+            # can be modelled completely on the cart proc side
+            cap_vert.preference_cost = self.cartesian_process.preference_cost_eval_fn(ee_poses)
             return cap_vert
 
 class SparseLadderGraph(object):
@@ -227,10 +241,12 @@ class SparseLadderGraph(object):
                     break
 
             if not cap_rung.cap_verts:
-                print('cap_rung #{0} fails to find a feasible sol within timeout {1}'.format(r_id, vert_timeout))
-                return INF
+                print('cap_rung #{}/{} fails to find a feasible sol within timeout {}'.format(r_id, len(self.cap_rungs)-1, vert_timeout))
+                # return INF
+                # raise ValueError('cap_rung #{}/{} fails to find a feasible sol within timeout {}'.format(r_id, len(self.cap_rungs)-1, vert_timeout))
+                continue
             else:
-                if verbose: print('cap_rung #{0} has found an initial feasible cap_vert.'.format(r_id))
+                if verbose: print('cap_rung #{}/{} has found an initial feasible cap_vert.'.format(r_id, len(self.cap_rungs)-1))
 
         initial_cost = self.cap_rungs[-1].cap_verts[0].get_cost_to_root()
         if verbose:

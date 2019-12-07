@@ -102,22 +102,22 @@ class LadderGraph(object):
 
 class EdgeBuilder(object):
     """edge builder for ladder graph, construct edges for fully connected biparte graph"""
-    def __init__(self, n_start, n_end, dof, upper_tm=None, joint_vel_limits=None):
+    def __init__(self, n_start, n_end, dof, upper_tm=None, joint_vel_limits=None, preference_cost=1.0):
         self.result_edges_ = [[] for i in range(n_start)]
         self.edge_scratch_ = [LadderGraphEdge(idx=None, cost=None) for i in range(n_end)] # preallocated space to work on
         self.dof_ = dof
-        self.delta_buffer_ = [0 for i in range(dof)]
         self.count_ = 0
         self.has_edges_ = False
+        self.preference_cost = preference_cost
 
     def consider(self, st_jt, end_jt, index):
         """index: to_id"""
         # TODO check delta joint val exceeds the joint_vel_limits
+        # TODO: use preference_cost here
         cost = 0
         for i in range(self.dof_):
             cost += abs(st_jt[i] - end_jt[i])
-
-        # cost = sum(self.delta_buffer_)
+        cost *= self.preference_cost
         assert(self.count_ < len(self.edge_scratch_))
         self.edge_scratch_[self.count_].cost = cost
         self.edge_scratch_[self.count_].idx = index

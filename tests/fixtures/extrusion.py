@@ -11,6 +11,7 @@ def extrusion_problem_path():
     # * extrusion problem here
     problem = 'four-frame'
     # problem = 'long_beam_test'
+    # problem = 'extreme_beam_test'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {

@@ -4,9 +4,9 @@
   <link name="eef_base_link">
     <visual>
 	  <!-- TCP caliberation should be entered here! -->
-      <origin rpy="0 0 0" xyz="0 0.00638 0.00131"/>
+      <origin rpy="0 0 0" xyz="0 0.006534 0"/>
       <geometry>
-        <mesh filename="../meshes/kodiak_end_effector/visual/kodiak_extruder_visual.stl" scale=".001 .001 .001"/>
+        <mesh filename="../meshes/mini_hotend/visual/mini_hotend_visual.stl" scale=".001 .001 .001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.5 0.5 0.5 1.0"/>
@@ -14,9 +14,9 @@
     </visual>
     <collision>
 	  <!-- TCP caliberation should be entered here! -->
-      <origin rpy="0 0 0" xyz="0 0.00638 0.00131"/>
+      <origin rpy="0 0 0" xyz="0 0.006534 0"/>
       <geometry>
-        <mesh filename="../meshes/kodiak_end_effector/collision/kodiak_extruder_collision.stl" scale=".001 .001 .001"/>
+        <mesh filename="../meshes/mini_hotend/collision/mini_hotend_collision.stl" scale=".001 .001 .001"/>
       </geometry>
       <material name="red">
         <color rgba="1 0 0 1"/>
@@ -29,7 +29,7 @@
   <!-- joint list -->
   <joint name="eef_base_to_tcp" type="fixed">
     <!-- caliberated TCP value here! -->
-    <origin rpy="0.0 1.57079632679 0.0" xyz="0.150779 0.008711 0.113987"/>
+    <origin rpy="0.0 1.57079632679 0.0" xyz="0.136569 0.008654 0.109056"/>
     <parent link="eef_base_link"/>
     <child link="eef_tcp_frame"/>
   </joint>

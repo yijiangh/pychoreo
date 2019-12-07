@@ -96,6 +96,8 @@ def generate_ladder_graph_from_poses(cart_proc, proc_ee_poses, check_collision=T
         ik_joint_names = cart_proc.ik_joint_names
         ik_joints = joints_from_names(robot, ik_joint_names)
 
+        preference_cost = cart_proc.preference_cost_eval_fn(proc_ee_poses)
+
         graph = LadderGraph(dof)
         graph.resize(len(ik_sols))
         # visualize jt sol
@@ -123,7 +125,8 @@ def generate_ladder_graph_from_poses(cart_proc, proc_ee_poses, check_collision=T
             assert st_size > 0, 'Ladder graph not valid: rung {}/{} is a zero size rung'.format(st_id, graph.get_rungs_size())
             assert end_size > 0, 'Ladder graph not valid: rung {}/{} is a zero size rung'.format(end_id, graph.get_rungs_size())
 
-            edge_builder = EdgeBuilder(st_size, end_size, dof)
+            edge_builder = EdgeBuilder(st_size, end_size, dof, preference_cost=preference_cost)
+            # edge_builder = EdgeBuilder(st_size, end_size, dof)
             for k in range(st_size):
                 st_id = k * dof
                 for j in range(end_size):

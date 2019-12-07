@@ -18,7 +18,8 @@ Unreleased
 
 **Added**
 
-* Added the `kodiak_end_effector` model (meshes&URDF) for extrusion examples, replacing the old one
+* Added `preference_cost` to `SparseLadderGraph` and `LadderGraph` to biase the search towards desired ee_poses or directions.
+* Added the `mini_hotend` model (meshes&URDF) for extrusion examples
 
 0.3.0
 ----------

@@ -48,6 +48,9 @@ def _NULL_COLLISION_FN(conf):
     # raise Warning('collision fn not specified!')
     # return False
 
+def _NULL_PREFERNCE_FN(sampled_poses):
+    return 1.0
+
 class CartesianSubProcess(object):
     def __init__(self, sub_process_name='',
                  collision_fn=_NULL_COLLISION_FN, pointwise_collision_fns={}):
@@ -107,6 +110,7 @@ class CartesianProcess(object):
     def __init__(self, process_name='',
         robot=None, ik_joint_names=[], sub_process_list=[],
         ee_pose_gen_fn=_NULL_EE_POSE_GEN_FN, sample_ik_fn=_NULL_SAMPLE_IK_FN,
+        preference_cost_eval_fn=_NULL_PREFERNCE_FN,
         element_identifier=None, target_conf=None):
 
         self._process_name = process_name
@@ -118,8 +122,7 @@ class CartesianProcess(object):
         self._element_id = element_identifier
         self._trajectory = None
         self._target_conf = target_conf
-
-        # TODO: add a trigger to "renew" the sample ee iterator in case we want to sample the poses again
+        self._preference_cost_eval_fn = preference_cost_eval_fn
 
     @property
     def robot(self):
@@ -197,6 +200,14 @@ class CartesianProcess(object):
 
     def reset_ee_pose_gen_fn(self):
         self.ee_pose_gen_fn.reset()
+
+    @property
+    def preference_cost_eval_fn(self):
+        return self._preference_cost_eval_fn
+
+    @preference_cost_eval_fn.setter
+    def preference_cost_eval_fn(self, pref_cost_eval_fn_):
+        self._preference_cost_eval_fn = pref_cost_eval_fn_
 
     @property
     def target_conf(self):
