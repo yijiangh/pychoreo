@@ -94,17 +94,17 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
     return cart_traj_dict
 
 @pytest.mark.extrusion
-@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
-    sample_time = 120
-    sparse_time_out = 25 # 60
+    sample_time = 30
+    sparse_time_out = 5 # 900
     roll_disc = 20
     pitch_disc = 20
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     linear_step_size = 0.003 # m
-    jt_res = 0.01 # 0.01
+    jt_res = 0.1 # 0.01
     shrink = 0.01 # m
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
@@ -274,6 +274,87 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
                              workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.02, tr_time_step=0.05)
 
+@pytest.mark.extrusion_resolve_trans
+def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
+    jt_res = 0.01 # 0.01
+    shrink = 0.00 # m
+    RRT_RESTARTS = 5
+    RRT_ITERATIONS = 40
+
+    # * create robot and pb environment
+    (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
+        (workspace_urdf, workspace_robot_disabled_link_names) = extrusion_robot_data
+
+    # * get problem & pre-computed json file paths
+    file_path, _, result_file_name = extrusion_problem_path
+
+    # * load shape (get nodal positions)
+    elements, node_points, ground_nodes = load_extrusion(file_path)
+
+    # * parse saved trajectory results
+    here = os.path.dirname(__file__)
+    save_file_path = os.path.join(here, 'results', result_file_name)
+
+    connect(use_gui=False)
+    with HideOutput():
+        robot = load_pybullet(robot_urdf, fixed_base=True)
+        workspace = load_pybullet(workspace_urdf, fixed_base=True)
+    ik_joints = joints_from_names(robot, ik_joint_names)
+    initial_conf = [0.08, -1.57, 1.74, 0.08, 0.17, -0.08]
+    disabled_self_collisions = get_disabled_collisions(robot, disabled_self_collision_link_names)
+    extra_disabled_collisions = get_body_body_disabled_collisions(robot, workspace, workspace_robot_disabled_link_names)
+
+    # * create element bodies (collision geometries)
+    with LockRenderer():
+        element_bodies = dict(zip(elements,
+            create_elements_bodies(node_points, elements, radius=0.002, shrink=shrink)))
+        assert all(isinstance(e_body, int) for e_body in element_bodies.values())
+        set_extrusion_camera(node_points)
+
+    # * parse saved trajectory
+    old_full_trajs = parse_saved_trajectory(save_file_path)
+    print_trajs = []
+    for cp_id, cp_trajs in enumerate(old_full_trajs):
+        cp_print_trajs = []
+        for trajectory in cp_trajs:
+            if not isinstance(trajectory, MotionTrajectory):
+                cp_print_trajs.append(trajectory)
+        print_trajs.append(cp_print_trajs)
+    full_trajs = print_trajs
+
+    # * transition motion planning between extrusions
+    return2idle = True
+    transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
+                                                                   disabled_collisions=disabled_self_collisions,
+                                                                   obstacles=[workspace], return2idle=return2idle,
+                                                                   resolutions=[jt_res]*len(ik_joints),
+                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS)
+    assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
+    if return2idle:
+        transition_traj[-1].tag = 'return2idle'
+        assert len(transition_traj)-1 == len(print_trajs)
+    else:
+        assert len(transition_traj) == len(print_trajs)
+
+    # * weave the Cartesian and transition processses together
+    for cp_id, ctrajs in enumerate(full_trajs):
+        ctrajs.insert(0, transition_traj[cp_id])
+    if return2idle:
+        full_trajs[-1].append(transition_traj[-1])
+
+    here = os.path.dirname(__file__)
+    save_dir = os.path.join(here, 'results')
+    export_trajectory(save_dir, full_trajs, ee_link_name,
+        indent=None, shape_file_path=file_path, include_robot_data=False, include_link_path=True)
+
+    # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
+    reset_simulation()
+    disconnect()
+
+    # visualize plan
+    if viewer:
+        display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.01)
 
 @pytest.mark.extrusion_viz
 def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector):
@@ -311,4 +392,4 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     # visualize plan
     if viewer:
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
-                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.05)
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.01)

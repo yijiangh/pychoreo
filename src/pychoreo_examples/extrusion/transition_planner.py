@@ -47,5 +47,5 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
         trans_traj.append(MotionTrajectory(robot, ik_joints, tr_path))
         # add printed element to the built obstacles
         if seq_id < len(print_trajs):
-            built_obstacles.append(element_bodies[print_trajs[seq_id][0].element])
+            built_obstacles.append(element_bodies[tuple(print_trajs[seq_id][0].element)])
     return trans_traj

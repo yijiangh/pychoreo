@@ -20,6 +20,7 @@ Unreleased
 
 * Added `preference_cost` to `SparseLadderGraph` and `LadderGraph` to biase the search towards desired ee_poses or directions.
 * Added the `mini_hotend` model (meshes&URDF) for extrusion examples
+* Added resolve transition plan to `extrusion` tests
 
 0.3.0
 ----------
