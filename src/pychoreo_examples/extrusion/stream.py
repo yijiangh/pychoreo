@@ -52,6 +52,14 @@ def get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc):
         return multiply(Pose(euler=Euler(roll=roll, pitch=pitch)), Pose(euler=Euler(yaw=yaw)))
     return ee_pose_map_fn
 
+def find_closest_map_id_to_pose_dir(target_pose, domain_size, ee_pose_map_fn):
+    target_dir = get_ee_pointing_direction(target_pose)
+    def distance_to_dir(pose_id):
+        pose = ee_pose_map_fn(pose_id, yaw=0)
+        ee_dir = get_ee_pointing_direction(pose)
+        return angle_between(ee_dir, target_dir)
+    return min(list(range(domain_size)), key=distance_to_dir)
+
 ################################################
 # preference cost evaluation fn
 
@@ -86,20 +94,27 @@ def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
 def build_extrusion_cartesian_process_sequence(
         element_seq, element_bodies, node_points, ground_nodes,
         robot, ik_joint_names, sample_ik_fn, ee_body,
+        ee_fmaps=None, ee_pose_map_fn=None,
         roll_disc=10, pitch_disc=10, yaw_sample_size=10,
         sample_time=5, approach_distance=0.01, linear_step_size=0.003, tool_from_root=None,
         self_collisions=True, disabled_collisions={},
         obstacles=None, extra_disabled_collisions={},
-        reverse_flags=None, verbose=False):
+        reverse_flags=None, verbose=False, max_attempts=2):
 
     # make sure we don't modify the obstacle list by accident
     built_obstacles = copy(obstacles) if obstacles else []
 
     ik_joints = joints_from_names(robot, ik_joint_names)
     if not reverse_flags: reverse_flags = [False for _ in len(element_seq)]
-    domain_size = roll_disc * pitch_disc
-    e_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
-    ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
+
+    if isinstance(ee_fmaps,dict) and callable(ee_pose_map_fn):
+        use_parsed_fmaps = True
+        print('Using parsed ee_fmaps to build extrusion Cartesian processes.')
+    else:
+        use_parsed_fmaps = False
+        domain_size = roll_disc * pitch_disc
+        ee_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
+        ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
 
     # TODO: remove later
     # json_data = {}
@@ -150,34 +165,38 @@ def build_extrusion_cartesian_process_sequence(
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={})
 
-        if verbose : print('Pruning candidate poses for E#{}'.format(element))
+        if verbose : print('----\nPruning candidate poses for E#{}'.format(element))
         if not is_ground(element, ground_nodes):
             # before_sum = sum(e_fmaps[element])
-            if extrusion_tag == 'connect':
-                # prune the one that causes the EE to collide with the element
-                for k in range(domain_size):
-                    angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(k)))
-                    # TODO: move these parameters to arguement
-                    if angle_to_element < np.pi/6:
-                        e_fmaps[element][k] = 0
-                # print('connect, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
-            # elif extrusion_tag == 'create':
-            #     for i in range(domain_size):
-            #         angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
-            #         if angle_to_element < (5/6) * np.pi:
-            #             e_fmaps[element][i] = 0
-            #     print('create, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
-
-            e_fmaps[element] = prune_ee_feasible_directions(full_path_pts,
-                                                            e_fmaps[element], ee_pose_map_fn, ee_body,
-                                                            obstacles=obstacles,
-                                                            tool_from_root=tool_from_root,
-                                                            check_ik=True, sample_ik_fn=sample_ik_fn, collision_fn=collision_fn,
-                                                            sub_process_ids=[(1,[])], max_attempts=5)
-            assert sum(e_fmaps[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
+            # diagnosis = True if seq_id == 19 else False
+            if not use_parsed_fmaps:
+                if extrusion_tag == 'connect':
+                    # prune the one that causes the EE to collide with the element
+                    for k in range(domain_size):
+                        angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(k)))
+                        # TODO: move these parameters to arguement
+                        if angle_to_element < np.pi/6 or angle_to_element > np.pi* 5/6:
+                            ee_fmaps[element][k] = 0
+                    # print('connect, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
+                elif extrusion_tag == 'create':
+                    for i in range(domain_size):
+                        angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
+                        if angle_to_element < (1/3) * np.pi:
+                            ee_fmaps[element][i] = 0
+                #     print('create, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
+                diagnosis = False
+                ee_fmaps[element] = prune_ee_feasible_directions(full_path_pts,
+                                                                ee_fmaps[element], ee_pose_map_fn, ee_body,
+                                                                obstacles=obstacles,
+                                                                tool_from_root=tool_from_root,
+                                                                check_ik=True, sample_ik_fn=sample_ik_fn, collision_fn=collision_fn,
+                                                                sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
+                                                                diagnosis=diagnosis)
+            # TODO: put this back later
+            # assert sum(e_fmaps[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
 
             # use pruned direction set to gen ee path poses
-            direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(e_fmaps[element]) if is_feasible]
+            direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(ee_fmaps[element]) if is_feasible]
 
             # json_data[extrusion_tag] = {}
             # json_data[extrusion_tag]['node_points'] = [pt.tolist() for pt in base_path_pts]
@@ -186,12 +205,16 @@ def build_extrusion_cartesian_process_sequence(
         else:
             # we only allow negative z direction for grounded elements
             direction_poses = [Pose(euler=Euler(pitch=np.pi))]
+            domain_size = len(ee_fmaps[element])
+            ee_fmaps[element] = [0 for _ in range(domain_size)]
+            for dir_pose in direction_poses:
+                ee_fmaps[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
 
         if yaw_sample_size < INF:
             yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)
             yaw_samples = next(yaw_gen)
             candidate_poses = [multiply(dpose, Pose(euler=Euler(yaw=yaw))) for dpose, yaw in product(direction_poses, yaw_samples)]
-            if verbose : print('{}: E#{} valid, candidate poses: {}, build enumeration sampler'.format(seq_id, element, len(candidate_poses)))
+            if verbose : print('{}/{}: E#{} valid, candidate poses: {}, build enumeration sampler'.format(seq_id, len(element_seq)-1, element, len(candidate_poses)))
             orient_gen_fn = get_enumeration_pose_generator(candidate_poses, shuffle=True)
         else:
             def get_yaw_generator(base_poses, dir_attempts=3):
@@ -200,7 +223,7 @@ def build_extrusion_cartesian_process_sequence(
                     for _ in range(dir_attempts):
                         yaw = random.uniform(-np.pi, +np.pi)
                         yield multiply(dpose, Pose(euler=Euler(yaw=yaw)))
-            if verbose : print('{}: E#{} valid, candidate direction poses: {}, build inf sampler'.format(seq_id, element, len(direction_poses)))
+            if verbose : print('{}/{}: E#{} valid, candidate direction poses: {}, build inf sampler'.format(seq_id, len(element_seq)-1, element, len(direction_poses)))
             orient_gen_fn = get_yaw_generator(direction_poses)
 
         pose_gen_fn = CartesianPoseGenFn(orient_gen_fn, extrusion_compose_fn, base_path_pts=base_path_pts)
@@ -230,12 +253,12 @@ def build_extrusion_cartesian_process_sequence(
         cart_proc_seq.append(cart_process)
         built_obstacles = built_obstacles + [element_bodies[element]]
 
-    # # TODO: remote later
+    # # TODO: remove later
     # import json
     # with open(r'C:\Users\yijiangh\Desktop\dir_data.json', 'w') as outfile:
     #     json.dump(json_data, outfile)
 
-    return cart_proc_seq, e_fmaps
+    return cart_proc_seq, ee_fmaps
 
 ##################################################
 
@@ -269,6 +292,7 @@ def prune_ee_feasible_directions(way_poses, free_pose_map, ee_pose_map_fn, ee_bo
 
                 for sp_id, pt_ids in sub_process_ids:
                     for pt_id in pt_ids:
+                        # print('checking: {}:{}'.format(sp_id, pt_ids))
                         tcp_pose = oriented_way_poses[sp_id][pt_id]
                         # transform TCP to EE tool base link
                         if tool_from_root:
@@ -277,7 +301,7 @@ def prune_ee_feasible_directions(way_poses, free_pose_map, ee_pose_map_fn, ee_bo
                         is_colliding = ee_collision_fn(root_pose)
                         if is_colliding:
                             break
-                        if not is_colliding and check_ik and pt_id in [0, int(len(pt_ids)/2.0), len(pt_ids)-1]:
+                        if not is_colliding and check_ik: # and pt_id in [int(len(pt_ids)/2.0)]: # [0, int(len(pt_ids)/2.0), len(pt_ids)-1]:
                             jt_list = sample_ik_fn(tcp_pose)
                             jt_list = [jts for jts in jt_list \
                                 if jts and not collision_fn(jts, diagnosis=diagnosis)]

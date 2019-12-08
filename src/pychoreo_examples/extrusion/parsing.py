@@ -14,6 +14,7 @@ from pybullet_planning import RED
 
 from pychoreo.process_model.trajectory import MotionTrajectory
 from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
+from pychoreo_examples.extrusion.stream import get_ee_pose_enumerate_map_fn
 
 LENGTH_SCALE_CONVERSION = {
     'millimeter': 1e-3,
@@ -121,4 +122,60 @@ def parse_saved_trajectory(file_path):
         full_traj.append(proc_traj_recon)
     return full_traj
 
+##################################################
 
+def save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=True, shape_file_path='', indent=None):
+    if os.path.exists(shape_file_path):
+        with open(shape_file_path, 'r') as f:
+            shape_data = json.loads(f.read())
+        if 'model_name' in shape_data:
+            file_name = shape_data['model_name']
+        else:
+            file_name = shape_file_path.split('.json')[-2].split(os.sep)[-1]
+    else:
+        file_name = 'pychoreo_pruned_ee_dir'
+        overwrite = False
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    data = OrderedDict()
+    data['assembly_type'] = 'extrusion'
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+    data['roll_disc'] = roll_disc
+    data['pitch_disc'] = pitch_disc
+
+    ee_fdir_maps_data = []
+    for element, fmap in e_fmaps.items():
+        # save the feasible dir's indices
+        ee_fdir_maps_data.append({'element':element, 'fmap_ids':np.nonzero(np.array(fmap))[0].tolist()})
+    data['ee_fdir_maps'] = ee_fdir_maps_data
+
+    full_save_path = os.path.join(save_dir, '{}_pruned_ee_dir_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
+    with open(full_save_path, 'w') as f:
+        json.dump(data, f, indent=indent)
+    print('ee feasible dir saved at: ', full_save_path)
+
+def parse_feasible_ee_maps(file_path):
+    if not os.path.exists(file_path):
+        print('No ee_maps file found at: ', file_path)
+        return None, None
+    else:
+        with open(file_path, 'r')  as f:
+            data = json.load(f)
+        print('Found ee_maps file, write_time: {}'.format(data['write_time']))
+
+    roll_disc = data['roll_disc']
+    pitch_disc = data['pitch_disc']
+    domain_size = roll_disc * pitch_disc
+    ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
+    e_fmaps = {}
+    for fdata in data['ee_fdir_maps']:
+        element = tuple(fdata['element'])
+        f_ids = fdata['fmap_ids']
+        e_fmaps[element] = [0 for _ in range(domain_size)]
+        for f_id in f_ids:
+            e_fmaps[element][f_id] = 1
+
+    return e_fmaps, ee_pose_map_fn

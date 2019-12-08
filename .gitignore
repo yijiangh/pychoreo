@@ -109,4 +109,4 @@ ENV/
 
 # generated results
 tests/results/*
-tests/test_data/*solution_regression-z.json
+tests/test_data/*.json

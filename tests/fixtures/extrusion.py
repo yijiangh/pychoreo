@@ -12,6 +12,7 @@ def extrusion_problem_path():
     problem = 'four-frame'
     # problem = 'long_beam_test'
     # problem = 'extreme_beam_test'
+    # problem = 'topopt-101_tiny'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -22,6 +23,7 @@ def extrusion_problem_path():
         'extrusion_exp_L75.0' : 'extrusion_exp_L75.0.json',
         'long_beam_test' : 'long_beam_test.json',
         'extreme_beam_test' : 'extreme_beam_test.json',
+        'topopt-101_tiny' : 'topopt-101_tiny.json',
     }
     EXTRUSION_SEQ_FILENAMES = {
         'four-frame': 'four-frame_solution_regression-z.json',
@@ -29,11 +31,13 @@ def extrusion_problem_path():
         'extrusion_exp_L75.0' : 'extrusion_exp_L75.0_solution_regression-z.json',
         'long_beam_test' : 'long_beam_test_solution_regression-z.json',
         'extreme_beam_test' : 'extreme_beam_test_solution_regression-z.json',
+        'topopt-101_tiny' : 'topopt-101_tiny_solution_regression-dijkstra.json',
     }
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES
     return os.path.join(EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[problem]), \
            os.path.join(here, '..', 'test_data', EXTRUSION_SEQ_FILENAMES[problem]), \
+           os.path.join(here, '..', 'test_data', problem + '_pruned_ee_dir_result_.json'), \
            problem + '_result_.json'
 
 @pytest.fixture
