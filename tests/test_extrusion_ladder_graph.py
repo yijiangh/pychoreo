@@ -110,6 +110,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     shrink = 0.01 # m
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
+    SMOOTH = 20
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -270,7 +271,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
                                                                    resolutions=[jt_res]*len(ik_joints),
-                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS)
+                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS, smooth=SMOOTH)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'
@@ -299,10 +300,12 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
-    jt_res = 0.01 # 0.01
+    jt_res = 0.05 # 0.01
     shrink = 0.00 # m
+    radius = 0.002
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
+    SMOOTH = 40
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -318,7 +321,7 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     here = os.path.dirname(__file__)
     save_file_path = os.path.join(here, 'results', result_file_name)
 
-    connect(use_gui=False)
+    connect(use_gui=viewer)
     with HideOutput():
         robot = load_pybullet(robot_urdf, fixed_base=True)
         workspace = load_pybullet(workspace_urdf, fixed_base=True)
@@ -330,7 +333,7 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     # * create element bodies (collision geometries)
     with LockRenderer():
         element_bodies = dict(zip(elements,
-            create_elements_bodies(node_points, elements, radius=0.002, shrink=shrink)))
+            create_elements_bodies(node_points, elements, radius=radius, shrink=shrink)))
         assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
@@ -351,7 +354,8 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
                                                                    resolutions=[jt_res]*len(ik_joints),
-                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS)
+                                                                   restarts=RRT_RESTARTS,
+                                                                   iterations=RRT_ITERATIONS, smooth=SMOOTH)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'

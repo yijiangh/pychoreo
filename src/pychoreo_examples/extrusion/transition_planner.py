@@ -5,8 +5,9 @@ from pybullet_planning import plan_joint_motion, get_collision_fn
 from pychoreo.process_model.trajectory import MotionTrajectory
 
 def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
-                                                 obstacles=[], return2idle=True, self_collisions=True, disabled_collisions={},
-                                                 weights=None, resolutions=None, custom_limits={}, **kwargs):
+                                                 obstacles=[], return2idle=True,
+                                                 self_collisions=True, disabled_collisions={},
+                                                 **kwargs):
     built_obstacles = []
     trans_traj = []
     for seq_id in range(len(print_trajs)+1):
@@ -31,7 +32,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
         tr_path = plan_joint_motion(robot, ik_joints, tr_end_conf,
                                     obstacles=obstacles + built_obstacles,
                                     self_collisions=self_collisions, disabled_collisions=disabled_collisions,
-                                    weights=weights, resolutions=resolutions, custom_limits=custom_limits, **kwargs)
+                                    **kwargs)
         if not tr_path:
             print('seq #{} cannot find transition path'.format(seq_id))
             print('Diagnosis...')
@@ -43,7 +44,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
             cfn(tr_start_conf, diagnosis=True)
 
             print('end pose:')
-            cfn(tr_end_conf)
+            cfn(tr_end_conf, diagnosis=True)
         trans_traj.append(MotionTrajectory(robot, ik_joints, tr_path))
         # add printed element to the built obstacles
         if seq_id < len(print_trajs):
