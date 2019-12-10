@@ -110,3 +110,5 @@ ENV/
 # generated results
 tests/results/*
 tests/test_data/*.json
+
+*.stlbak
