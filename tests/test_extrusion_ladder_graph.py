@@ -109,10 +109,10 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     jt_res = 0.1 # 0.01
     radius = 1e-6 # 0.002
     shrink = 0.01 # m
-    RRT_RESTARTS = 5
-    RRT_ITERATIONS = 40
-    SMOOTH = 20
-    MAX_DISTANCE = 0.0 # 0.01
+    # RRT_RESTARTS = 5
+    # RRT_ITERATIONS = 40
+    SMOOTH = 30
+    MAX_DISTANCE = 0.01 # 0.01
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -280,7 +280,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
                                                                    resolutions=[jt_res]*len(ik_joints),
-                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS,
+                                                                #    restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS,
                                                                    smooth=SMOOTH, max_distance=MAX_DISTANCE)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
