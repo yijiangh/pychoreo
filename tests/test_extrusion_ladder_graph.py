@@ -95,15 +95,16 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
     return cart_traj_dict
 
 @pytest.mark.extrusion
-# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 30
-    sparse_time_out = 5 # 900
-    roll_disc = 10 # 60
-    pitch_disc = 10
+    sparse_time_out = 300 # 900
+    roll_disc = 50 # 60
+    pitch_disc = 50
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
+    approach_distance = 0.025 # ! a bug when 0.03?
     linear_step_size = 0.003 # m
     jt_res = 0.1 # 0.01
     radius = 1e-6 # 0.002
@@ -111,6 +112,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
     SMOOTH = 20
+    MAX_DISTANCE = 0.0 # 0.01
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -175,19 +177,21 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # * load precomputed sequence
     parsed_ee_fmaps = None
     ee_pose_map_fn = None
-    try:
-        parsed_ee_fmaps, ee_pose_map_fn = parse_feasible_ee_maps(ee_maps_file_path)
-        if parsed_ee_fmaps is None:
+    parsed_ee_fmaps, ee_pose_map_fn, (roll_disc_parsed, pitch_disc_parsed) = parse_feasible_ee_maps(ee_maps_file_path)
+    if parsed_ee_fmaps is None:
+        try:
             with open(seq_file_path, 'r') as f:
                 seq_data = json.loads(f.read())
             print('Precomputed sequence loaded: ', seq_file_path)
             element_sequence = [tuple(e) for e in seq_data['plan']]
-        else:
-            print('Precomputed sequence and feasible_ee_maps loaded.')
-            element_sequence = [tuple(e) for e in parsed_ee_fmaps.keys()]
-    except:
-        warnings.warn('Parsing precomputed sequence file failed - using default element sequence.')
-        element_sequence = [tuple(e) for e in elements]
+        except:
+            warnings.warn('Parsing precomputed sequence file failed - using default element sequence.')
+            element_sequence = [tuple(e) for e in elements]
+    else:
+        print('Precomputed sequence and feasible_ee_maps loaded.')
+        element_sequence = [tuple(e) for e in parsed_ee_fmaps.keys()]
+        roll_disc = roll_disc_parsed
+        pitch_disc = pitch_disc_parsed
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
     # * compute reverse flags based on the precomputed sequence
@@ -208,7 +212,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             robot, ik_joint_names, sample_ik_fn, ee_body,
             ee_fmaps=parsed_ee_fmaps, ee_pose_map_fn=ee_pose_map_fn,
             roll_disc=roll_disc, pitch_disc=pitch_disc, yaw_sample_size=yaw_sample_size, sample_time=sample_time,
-            linear_step_size=linear_step_size, tool_from_root=tool_from_root,
+            approach_distance=approach_distance, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
             self_collisions=True, disabled_collisions=disabled_self_collisions,
             obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
             reverse_flags=reverse_flags, verbose=True)
@@ -265,13 +269,19 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
                 print(sp.trajectory)
     full_trajs = print_trajs
 
+    here = os.path.dirname(__file__)
+    save_dir = os.path.join(here, 'results')
+    export_trajectory(save_dir, full_trajs, ee_link_name, indent=None, shape_file_path=file_path, include_robot_data=False, include_link_path=True)
+    print('Cartesian planning for printing done! Result saved to {}'.format(save_dir))
+
     # * transition motion planning between extrusions
     return2idle = True
     transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
                                                                    resolutions=[jt_res]*len(ik_joints),
-                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS, smooth=SMOOTH)
+                                                                   restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS,
+                                                                   smooth=SMOOTH, max_distance=MAX_DISTANCE)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'
@@ -301,11 +311,12 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.05 # 0.01
-    shrink = 0.00 # m
-    radius = 0.002
-    RRT_RESTARTS = 5
-    RRT_ITERATIONS = 40
-    SMOOTH = 40
+    shrink = 0.01 # m
+    radius = 2e-6
+    # RRT_RESTARTS = 5
+    # RRT_ITERATIONS = 40
+    SMOOTH = 30
+    MAX_DISTANCE = 0.005
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -354,8 +365,9 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
                                                                    resolutions=[jt_res]*len(ik_joints),
-                                                                   restarts=RRT_RESTARTS,
-                                                                   iterations=RRT_ITERATIONS, smooth=SMOOTH)
+                                                                #    restarts=RRT_RESTARTS,
+                                                                #    iterations=RRT_ITERATIONS,
+                                                                   smooth=SMOOTH, max_distance=MAX_DISTANCE)
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
     if return2idle:
         transition_traj[-1].tag = 'return2idle'

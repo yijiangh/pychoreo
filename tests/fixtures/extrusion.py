@@ -10,9 +10,10 @@ import pychoreo_examples
 def extrusion_problem_path():
     # * extrusion problem here
     # problem = 'four-frame'
-    # problem = 'long_beam_test'
+    # problem = 'extrusion_exp_L75.0'
+    problem = 'long_beam_test'
     # problem = 'extreme_beam_test'
-    problem = 'topopt-101_tiny'
+    # problem = 'topopt-101_tiny'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {

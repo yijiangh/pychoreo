@@ -69,6 +69,7 @@ def get_ee_pointing_direction(ee_pose):
     return z_axis
 
 def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
+    # TODO: prefer having the cooling pipe parellel to the element direction
     # prefer the directions that are closer to the element direction
     def cost_val_fn(ee_poses):
         # print('create cost: ', abs(angle_between(element_dir, -1 * get_ee_pointing_direction(ee_poses[1][0]))) / np.pi)
@@ -80,6 +81,7 @@ def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
 
 def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
     # prefer directions that are perpendicular to the element direction
+    # TODO: prefer having the cooling pipe parellel to the element direction
     def cost_val_fn(ee_poses):
         # print('connect cost: ', abs(angle_between(element_dir, get_ee_pointing_direction(ee_poses[1][0])) - np.pi/2) / np.pi)
         pf_cost = lower_cost + (upper_cost - lower_cost) * \
@@ -175,6 +177,7 @@ def build_extrusion_cartesian_process_sequence(
                     for k in range(domain_size):
                         angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(k)))
                         # TODO: move these parameters to arguement
+                        # TODO: maybe try np.pi / 3?
                         if angle_to_element < np.pi/6 or angle_to_element > np.pi* 5/6:
                             ee_fmaps[element][k] = 0
                     # print('connect, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))

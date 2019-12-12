@@ -160,7 +160,7 @@ def save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=Tr
 def parse_feasible_ee_maps(file_path):
     if not os.path.exists(file_path):
         print('No ee_maps file found at: ', file_path)
-        return None, None
+        return None, None, (None, None)
     else:
         with open(file_path, 'r')  as f:
             data = json.load(f)
@@ -178,4 +178,4 @@ def parse_feasible_ee_maps(file_path):
         for f_id in f_ids:
             e_fmaps[element][f_id] = 1
 
-    return e_fmaps, ee_pose_map_fn
+    return e_fmaps, ee_pose_map_fn, (roll_disc, pitch_disc)
