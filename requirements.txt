@@ -3,3 +3,4 @@ pybullet
 pybullet_planning
 ikfast_pybind
 compas_fab
+termcolor

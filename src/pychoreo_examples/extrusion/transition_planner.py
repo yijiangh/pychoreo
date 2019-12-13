@@ -1,4 +1,6 @@
 import warnings
+from termcolor import cprint
+
 from pybullet_planning import set_joint_positions
 from pybullet_planning import plan_joint_motion, get_collision_fn
 
@@ -34,7 +36,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
                                     self_collisions=self_collisions, disabled_collisions=disabled_collisions,
                                     **kwargs)
         if not tr_path:
-            print('seq #{} cannot find transition path'.format(seq_id))
+            cprint('seq #{} cannot find transition path'.format(seq_id), 'green', 'on_red')
             print('Diagnosis...')
             from pybullet_planning import MAX_DISTANCE
             max_distance = kwargs['max_distance'] if 'max_distance' in kwargs else MAX_DISTANCE

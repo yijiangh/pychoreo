@@ -13,7 +13,8 @@ def extrusion_problem_path():
     # problem = 'extrusion_exp_L75.0'
     # problem = 'long_beam_test'
     # problem = 'extreme_beam_test'
-    problem = 'topopt-101_tiny'
+    # problem = 'topopt-101_tiny'
+    problem = 'topopt-205_long_beam_test'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -25,6 +26,7 @@ def extrusion_problem_path():
         'long_beam_test' : 'long_beam_test.json',
         'extreme_beam_test' : 'extreme_beam_test.json',
         'topopt-101_tiny' : 'topopt-101_tiny.json',
+        'topopt-205_long_beam_test' : 'topopt-205_long_beam_test.json',
     }
     EXTRUSION_SEQ_FILENAMES = {
         'four-frame': 'four-frame_solution_regression-z.json',
@@ -33,6 +35,7 @@ def extrusion_problem_path():
         'long_beam_test' : 'long_beam_test_solution_regression-z.json',
         'extreme_beam_test' : 'extreme_beam_test_solution_regression-z.json',
         'topopt-101_tiny' : 'topopt-101_tiny_solution_regression-dijkstra.json',
+        'topopt-205_long_beam_test' : 'topopt-205_long_beam_test_solution_progression-dijkstra.json',
     }
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES

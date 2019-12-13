@@ -4,6 +4,7 @@ import random
 import numpy as np
 import pytest
 import warnings
+from termcolor import cprint
 
 from pybullet_planning import INF
 from pybullet_planning import load_pybullet, connect, wait_for_user, LockRenderer, has_gui, WorldSaver, HideOutput, \
@@ -27,8 +28,7 @@ import pychoreo_examples
 from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_bodies, parse_saved_trajectory, \
     parse_feasible_ee_maps, save_feasible_ee_maps
 from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw_extrusion_sequence, display_trajectories
-from pychoreo_examples.extrusion.stream import get_extrusion_ee_pose_compose_fn, get_ee_pose_enumerate_map_fn, \
-    build_extrusion_cartesian_process_sequence
+from pychoreo_examples.extrusion.stream import get_extrusion_ee_pose_compose_fn, build_extrusion_cartesian_process_sequence
 from pychoreo_examples.extrusion.utils import max_valence_extrusion_direction_routing
 from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
@@ -100,9 +100,11 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 30
-    sparse_time_out = 300 # 900
-    roll_disc = 50 # 60
-    pitch_disc = 50
+    sparse_time_out = 60 # 900
+    # roll_disc = 60 # 60
+    # pitch_disc = 60
+    roll_disc = 100 # 60
+    pitch_disc = 100
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     approach_distance = 0.025 # ! a bug when 0.03?
     linear_step_size = 0.003 # m
@@ -176,22 +178,26 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
     # * load precomputed sequence
     parsed_ee_fmaps = None
-    ee_pose_map_fn = None
-    parsed_ee_fmaps, ee_pose_map_fn, (roll_disc_parsed, pitch_disc_parsed) = parse_feasible_ee_maps(ee_maps_file_path)
+    parsed_ee_fmaps, parsed_disc_maps = parse_feasible_ee_maps(ee_maps_file_path)
     if parsed_ee_fmaps is None:
         try:
             with open(seq_file_path, 'r') as f:
                 seq_data = json.loads(f.read())
-            print('Precomputed sequence loaded: ', seq_file_path)
+            cprint('Precomputed sequence loaded: {}'.format(seq_file_path), 'green')
             element_sequence = [tuple(e) for e in seq_data['plan']]
         except:
-            warnings.warn('Parsing precomputed sequence file failed - using default element sequence.')
+            cprint('Parsing precomputed sequence file failed - using default element sequence.', 'yellow')
             element_sequence = [tuple(e) for e in elements]
+        disc_maps = {tuple(element) : (roll_disc, pitch_disc) for element in elements}
     else:
-        print('Precomputed sequence and feasible_ee_maps loaded.')
+        cprint('Precomputed sequence and feasible_ee_maps loaded.', 'green')
         element_sequence = [tuple(e) for e in parsed_ee_fmaps.keys()]
-        roll_disc = roll_disc_parsed
-        pitch_disc = pitch_disc_parsed
+        disc_maps = parsed_disc_maps
+        for element, ee_fmap in parsed_ee_fmaps.items():
+            if sum(ee_fmap) == 0 or len(ee_fmap) == 0:
+                print('Parsed ee_fmap for {} empty, Changing disc to {}x{}'.format(element, roll_disc, pitch_disc))
+                disc_maps[element] = (roll_disc, pitch_disc)
+
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
     # * compute reverse flags based on the precomputed sequence
@@ -210,8 +216,8 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         cart_process_seq, e_fmaps = build_extrusion_cartesian_process_sequence(
             element_sequence, element_bodies, node_points, ground_nodes,
             robot, ik_joint_names, sample_ik_fn, ee_body,
-            ee_fmaps=parsed_ee_fmaps, ee_pose_map_fn=ee_pose_map_fn,
-            roll_disc=roll_disc, pitch_disc=pitch_disc, yaw_sample_size=yaw_sample_size, sample_time=sample_time,
+            disc_maps, ee_fmap_from_element=parsed_ee_fmaps,
+            yaw_sample_size=yaw_sample_size, sample_time=sample_time,
             approach_distance=approach_distance, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
             self_collisions=True, disabled_collisions=disabled_self_collisions,
             obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
@@ -219,14 +225,15 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
         here = os.path.dirname(__file__)
         save_dir = os.path.join(here, 'test_data')
-        save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=True, shape_file_path=file_path, indent=None)
+        save_feasible_ee_maps(e_fmaps, disc_maps, save_dir, overwrite=True, shape_file_path=file_path, indent=None)
 
         # sanity check
         exist_nonfeasible = False
         for element, fmap in e_fmaps.items():
             if sum(fmap) == 0:
                 exist_nonfeasible = True
-                print('E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element))
+                cprint('E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element),
+                    'green', 'on_red')
         assert not exist_nonfeasible
 
     assert isinstance(cart_process_seq, list)
@@ -237,10 +244,8 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     if has_gui():
         # just move the element bodies and ee_body away to clear the visualized scene
         set_pose(ee_body, unit_pose())
-        if not ee_pose_map_fn:
-            ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
         for e_body in element_bodies.values(): set_pose(e_body, unit_pose())
-        draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, ee_pose_map_fn=ee_pose_map_fn,
+        draw_extrusion_sequence(node_points, element_bodies, element_sequence, e_fmaps, disc_maps,
                                 line_width=5, direction_len=0.005, time_step=INF)
 
     viz_inspect = False
@@ -431,4 +436,4 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     # visualize plan
     if viewer:
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
-                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.01)
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.1, tr_time_step=0.01)

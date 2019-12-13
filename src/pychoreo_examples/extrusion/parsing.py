@@ -124,7 +124,7 @@ def parse_saved_trajectory(file_path):
 
 ##################################################
 
-def save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=True, shape_file_path='', indent=None):
+def save_feasible_ee_maps(e_fmaps, disc_maps, save_dir, overwrite=True, shape_file_path='', indent=None):
     if os.path.exists(shape_file_path):
         with open(shape_file_path, 'r') as f:
             shape_data = json.loads(f.read())
@@ -143,13 +143,12 @@ def save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=Tr
     data['assembly_type'] = 'extrusion'
     data['file_name'] = file_name
     data['write_time'] = str(datetime.datetime.now())
-    data['roll_disc'] = roll_disc
-    data['pitch_disc'] = pitch_disc
 
     ee_fdir_maps_data = []
     for element, fmap in e_fmaps.items():
         # save the feasible dir's indices
-        ee_fdir_maps_data.append({'element':element, 'fmap_ids':np.nonzero(np.array(fmap))[0].tolist()})
+        ee_fdir_maps_data.append({'element':element, 'fmap_ids':np.nonzero(np.array(fmap))[0].tolist(),
+                                  'roll_disc':disc_maps[element][0], 'pitch_disc':disc_maps[element][1]})
     data['ee_fdir_maps'] = ee_fdir_maps_data
 
     full_save_path = os.path.join(save_dir, '{}_pruned_ee_dir_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
@@ -160,22 +159,31 @@ def save_feasible_ee_maps(e_fmaps, roll_disc, pitch_disc, save_dir, overwrite=Tr
 def parse_feasible_ee_maps(file_path):
     if not os.path.exists(file_path):
         print('No ee_maps file found at: ', file_path)
-        return None, None, (None, None)
+        return None, None
     else:
         with open(file_path, 'r')  as f:
             data = json.load(f)
         print('Found ee_maps file, write_time: {}'.format(data['write_time']))
 
-    roll_disc = data['roll_disc']
-    pitch_disc = data['pitch_disc']
-    domain_size = roll_disc * pitch_disc
-    ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
+    # presumed disc parameter
+    if 'roll_disc' in data and 'pitch_disc' in data:
+        presumed_roll_disc = data['roll_disc']
+        presumed_pitch_disc = data['pitch_disc']
+
     e_fmaps = {}
+    disc_maps = {}
     for fdata in data['ee_fdir_maps']:
         element = tuple(fdata['element'])
         f_ids = fdata['fmap_ids']
-        e_fmaps[element] = [0 for _ in range(domain_size)]
+        if 'roll_disc' in fdata and 'pitch_disc' in fdata:
+            f_roll_disc = fdata['roll_disc']
+            f_pitch_disc = fdata['pitch_disc']
+        else:
+            f_roll_disc = presumed_roll_disc
+            f_pitch_disc = presumed_pitch_disc
+        f_domain_size = f_roll_disc * f_pitch_disc
+        e_fmaps[element] = [0 for _ in range(f_domain_size)]
         for f_id in f_ids:
             e_fmaps[element][f_id] = 1
-
-    return e_fmaps, ee_pose_map_fn, (roll_disc, pitch_disc)
+        disc_maps[element] = (f_roll_disc, f_pitch_disc)
+    return e_fmaps, disc_maps

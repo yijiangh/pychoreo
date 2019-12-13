@@ -4,6 +4,8 @@ from itertools import product
 from copy import copy
 import numpy as np
 
+from termcolor import cprint
+
 from pybullet_planning import INF, RED
 from pybullet_planning import set_pose, multiply, pairwise_collision, get_collision_fn, joints_from_names, \
     get_disabled_collisions, interpolate_poses, get_moving_links, get_body_body_disabled_collisions, interval_generator
@@ -68,25 +70,45 @@ def get_ee_pointing_direction(ee_pose):
     z_axis = matrix_from_quat(quat)[:, 2]
     return z_axis
 
+def get_cooling_pipe_direction(ee_pose):
+    quat = ee_pose[1]
+    y_axis = matrix_from_quat(quat)[:, 1]
+    return y_axis
+
+COOLING_COST_RATIO = 0.01
+
 def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
-    # TODO: prefer having the cooling pipe parellel to the element direction
     # prefer the directions that are closer to the element direction
     def cost_val_fn(ee_poses):
-        # print('create cost: ', abs(angle_between(element_dir, -1 * get_ee_pointing_direction(ee_poses[1][0]))) / np.pi)
-        pf_cost = lower_cost + (upper_cost - lower_cost) * \
-            angle_between(element_dir, -1 * get_ee_pointing_direction(ee_poses[1][0])) / np.pi
-        # print('create cost: ', pf_cost)
+        ee_dir = get_ee_pointing_direction(ee_poses[1][0])
+        ee_dir2element_angle = angle_between(element_dir, ee_dir)
+        pf_cost = lower_cost + (upper_cost - lower_cost) * (np.pi - ee_dir2element_angle) / np.pi
+
+        # TODO: encourage the cooling pipe to be parellel to the element dir
+        if ee_dir2element_angle < np.pi - (5.0/180)*np.pi:
+            cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+            perp_dir = np.cross(ee_dir, element_dir)
+            cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+            # we want this to be close to 0
+            pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+
         return pf_cost
     return cost_val_fn
 
 def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
     # prefer directions that are perpendicular to the element direction
-    # TODO: prefer having the cooling pipe parellel to the element direction
     def cost_val_fn(ee_poses):
-        # print('connect cost: ', abs(angle_between(element_dir, get_ee_pointing_direction(ee_poses[1][0])) - np.pi/2) / np.pi)
-        pf_cost = lower_cost + (upper_cost - lower_cost) * \
-            abs(angle_between(element_dir, get_ee_pointing_direction(ee_poses[1][0])) - np.pi/2) / np.pi
-        # print('connect cost: ', pf_cost)
+        ee_dir = get_ee_pointing_direction(ee_poses[1][0])
+        ee_dir2element_angle = angle_between(element_dir, ee_dir)
+        pf_cost = lower_cost + (upper_cost - lower_cost) * abs(ee_dir2element_angle - np.pi/2) / np.pi
+
+        # TODO: encourage the cooling pipe to be parellel to the element dir
+        cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+        perp_dir = np.cross(ee_dir, element_dir)
+        cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+        # we want this to be close to 0
+        pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+
         return pf_cost
     return cost_val_fn
 
@@ -96,27 +118,25 @@ def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
 def build_extrusion_cartesian_process_sequence(
         element_seq, element_bodies, node_points, ground_nodes,
         robot, ik_joint_names, sample_ik_fn, ee_body,
-        ee_fmaps=None, ee_pose_map_fn=None,
-        roll_disc=10, pitch_disc=10, yaw_sample_size=10,
+        disc_maps, ee_fmap_from_element=None,
+        yaw_sample_size=10,
         sample_time=5, approach_distance=0.01, linear_step_size=0.003, tool_from_root=None,
         self_collisions=True, disabled_collisions={},
         obstacles=None, extra_disabled_collisions={},
         reverse_flags=None, verbose=False, max_attempts=2):
-
     # make sure we don't modify the obstacle list by accident
     built_obstacles = copy(obstacles) if obstacles else []
 
     ik_joints = joints_from_names(robot, ik_joint_names)
     if not reverse_flags: reverse_flags = [False for _ in len(element_seq)]
 
-    if isinstance(ee_fmaps,dict) and callable(ee_pose_map_fn):
+    if isinstance(ee_fmap_from_element, dict):
         use_parsed_fmaps = True
         print('Using parsed ee_fmaps to build extrusion Cartesian processes.')
     else:
         use_parsed_fmaps = False
-        domain_size = roll_disc * pitch_disc
-        ee_fmaps = {e : [1 for _ in range(domain_size)] for e in element_seq}
-        ee_pose_map_fn = get_ee_pose_enumerate_map_fn(roll_disc, pitch_disc)
+        ee_fmap_from_element = {e : [1 for _ in range(disc_maps[e][0] * disc_maps[e][1])] for e in element_seq}
+    ee_pose_map_fn_from_element = {e : get_ee_pose_enumerate_map_fn(disc_maps[e][0], disc_maps[e][1]) for e in element_seq}
 
     # TODO: remove later
     # json_data = {}
@@ -167,11 +187,18 @@ def build_extrusion_cartesian_process_sequence(
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={})
 
+        ee_pose_map_fn = ee_pose_map_fn_from_element[element]
         if verbose : print('----\nPruning candidate poses for E#{}'.format(element))
         if not is_ground(element, ground_nodes):
             # before_sum = sum(e_fmaps[element])
             # diagnosis = True if seq_id == 19 else False
-            if not use_parsed_fmaps:
+            if use_parsed_fmaps and sum(ee_fmap_from_element[element]) > 0:
+                print('Using parsed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
+                    disc_maps[element][0], disc_maps[element][1]))
+            else:
+                if sum(ee_fmap_from_element[element]) == 0:
+                    ee_fmap_from_element[element] = [1 for _ in range(
+                        disc_maps[element][0] * disc_maps[element][1])]
                 if extrusion_tag == 'connect':
                     # prune the one that causes the EE to collide with the element
                     for k in range(domain_size):
@@ -179,27 +206,33 @@ def build_extrusion_cartesian_process_sequence(
                         # TODO: move these parameters to arguement
                         # TODO: maybe try np.pi / 3?
                         if angle_to_element < np.pi/6 or angle_to_element > np.pi* 5/6:
-                            ee_fmaps[element][k] = 0
+                            ee_fmap_from_element[element][k] = 0
                     # print('connect, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
                 elif extrusion_tag == 'create':
                     for i in range(domain_size):
                         angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
                         if angle_to_element < (1/3) * np.pi:
-                            ee_fmaps[element][i] = 0
+                            ee_fmap_from_element[element][i] = 0
                 #     print('create, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
-                diagnosis = False
-                ee_fmaps[element] = prune_ee_feasible_directions(full_path_pts,
-                                                                ee_fmaps[element], ee_pose_map_fn, ee_body,
-                                                                obstacles=obstacles,
-                                                                tool_from_root=tool_from_root,
-                                                                check_ik=True, sample_ik_fn=sample_ik_fn, collision_fn=collision_fn,
-                                                                sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
-                                                                diagnosis=diagnosis)
+                diagnosis = True
+                ee_fmap_from_element[element] = prune_ee_feasible_directions(full_path_pts,
+                                                                 ee_fmap_from_element[element], ee_pose_map_fn, ee_body,
+                                                                 obstacles=obstacles,
+                                                                 tool_from_root=tool_from_root,
+                                                                 check_ik=True, sample_ik_fn=sample_ik_fn, collision_fn=collision_fn,
+                                                                 sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
+                                                                 diagnosis=diagnosis)
+
+                print('Computed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
+                    disc_maps[element][0], disc_maps[element][1]))
             # TODO: put this back later
-            # assert sum(e_fmaps[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
+            # assert sum(ee_fmap_from_element[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
+            if sum(ee_fmap_from_element[element]) == 0:
+                cprint('E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element),
+                    'green', 'on_red')
 
             # use pruned direction set to gen ee path poses
-            direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(ee_fmaps[element]) if is_feasible]
+            direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(ee_fmap_from_element[element]) if is_feasible]
 
             # json_data[extrusion_tag] = {}
             # json_data[extrusion_tag]['node_points'] = [pt.tolist() for pt in base_path_pts]
@@ -208,16 +241,17 @@ def build_extrusion_cartesian_process_sequence(
         else:
             # we only allow negative z direction for grounded elements
             direction_poses = [Pose(euler=Euler(pitch=np.pi))]
-            domain_size = len(ee_fmaps[element])
-            ee_fmaps[element] = [0 for _ in range(domain_size)]
+            domain_size = len(ee_fmap_from_element[element])
+            ee_fmap_from_element[element] = [0 for _ in range(domain_size)]
             for dir_pose in direction_poses:
-                ee_fmaps[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
+                ee_fmap_from_element[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
+            print('Grounded element, only -z direction allowed.')
 
         if yaw_sample_size < INF:
             yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)
             yaw_samples = next(yaw_gen)
             candidate_poses = [multiply(dpose, Pose(euler=Euler(yaw=yaw))) for dpose, yaw in product(direction_poses, yaw_samples)]
-            if verbose : print('{}/{}: E#{} valid, candidate poses: {}, build enumeration sampler'.format(seq_id, len(element_seq)-1, element, len(candidate_poses)))
+            if verbose : print('{}/{}: E#{}, candidate poses: {}, build enumeration sampler'.format(seq_id, len(element_seq)-1, element, len(candidate_poses)))
             orient_gen_fn = get_enumeration_pose_generator(candidate_poses, shuffle=True)
         else:
             def get_yaw_generator(base_poses, dir_attempts=3):
@@ -226,7 +260,7 @@ def build_extrusion_cartesian_process_sequence(
                     for _ in range(dir_attempts):
                         yaw = random.uniform(-np.pi, +np.pi)
                         yield multiply(dpose, Pose(euler=Euler(yaw=yaw)))
-            if verbose : print('{}/{}: E#{} valid, candidate direction poses: {}, build inf sampler'.format(seq_id, len(element_seq)-1, element, len(direction_poses)))
+            if verbose : print('{}/{}: E#{}, candidate direction poses: {}, build inf sampler'.format(seq_id, len(element_seq)-1, element, len(direction_poses)))
             orient_gen_fn = get_yaw_generator(direction_poses)
 
         pose_gen_fn = CartesianPoseGenFn(orient_gen_fn, extrusion_compose_fn, base_path_pts=base_path_pts)
@@ -261,7 +295,7 @@ def build_extrusion_cartesian_process_sequence(
     # with open(r'C:\Users\yijiangh\Desktop\dir_data.json', 'w') as outfile:
     #     json.dump(json_data, outfile)
 
-    return cart_proc_seq, ee_fmaps
+    return cart_proc_seq, ee_fmap_from_element
 
 ##################################################
 

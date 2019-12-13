@@ -11,6 +11,7 @@ from pybullet_planning import Pose, Point, Euler, INF
 from pychoreo.process_model.trajectory import MotionTrajectory
 from pychoreo_examples.extrusion.trajectory import PrintTrajectory, PrintBufferTrajectory
 from pychoreo_examples.extrusion.utils import is_ground
+from pychoreo_examples.extrusion.stream import get_ee_pose_enumerate_map_fn
 
 ##################################################
 
@@ -42,11 +43,11 @@ def set_extrusion_camera(node_points):
 
 ##################################################
 
-def draw_extrusion_sequence(node_points, element_bodies, element_sequence, seq_poses=None, ee_pose_map_fn=lambda id : unit_pose,
+def draw_extrusion_sequence(node_points, element_bodies, element_sequence, ee_fmaps={}, disc_maps={},
                            line_width=10, time_step=INF, direction_len=0.005, extrusion_tags=[]):
     assert len(element_bodies) == len(element_sequence)
-    if seq_poses:
-        assert len(seq_poses) == len(element_sequence)
+    if ee_fmaps:
+        assert len(ee_fmaps) == len(element_sequence)
     handles = []
 
     for seq_id, element in enumerate(element_sequence):
@@ -63,9 +64,10 @@ def draw_extrusion_sequence(node_points, element_bodies, element_sequence, seq_p
             element_tag += '-' + extrusion_tags[seq_id]
         handles.append(add_text(element_tag, position=e_mid))
 
-        if seq_poses is not None:
+        if element in ee_fmaps and element in disc_maps:
+            ee_pose_map_fn = get_ee_pose_enumerate_map_fn(*disc_maps[element])
             with LockRenderer():
-                for flag_id, feasible_flag in enumerate(seq_poses[element]):
+                for flag_id, feasible_flag in enumerate(ee_fmaps[element]):
                     if feasible_flag:
                         ee_pose = ee_pose_map_fn(flag_id)
                         fmap_pose = multiply(Pose(point=e_mid), ee_pose)
