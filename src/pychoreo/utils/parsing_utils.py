@@ -33,7 +33,10 @@ def export_trajectory(save_dir, trajs, ee_link_name=None, overwrite=True, shape_
         for sp_traj in cp_trajs:
             if ee_link_name and include_link_path:
                 ee_link_path = sp_traj.get_link_path(ee_link_name)
-        data['trajectory'].append([sp_traj.to_data(include_robot_data=True, include_link_path=True) for sp_traj in cp_trajs])
+        traj_data = []
+        for sp_traj in cp_trajs:
+            traj_data.append(sp_traj.to_data(include_robot_data=True, include_link_path=include_link_path))
+        data['trajectory'].append(traj_data)
 
     full_save_path = os.path.join(save_dir, '{}_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
     with open(full_save_path, 'w') as f:

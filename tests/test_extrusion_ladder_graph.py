@@ -271,7 +271,6 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             for sp_id, sp in enumerate(cp.sub_process_list):
                 assert sp.trajectory, '{}-{} does not have a Cartesian plan found!'.format(cp, sp)
                 print_trajs[cp_id].append(sp.trajectory)
-                print(sp.trajectory)
     full_trajs = print_trajs
 
     here = os.path.dirname(__file__)
@@ -287,18 +286,18 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
                                                                    resolutions=[jt_res]*len(ik_joints),
                                                                 #    restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS,
                                                                    smooth=SMOOTH, max_distance=MAX_DISTANCE)
-    assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
+    assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj.values())
     if return2idle:
-        transition_traj[-1].tag = 'return2idle'
-        assert len(transition_traj)-1 == len(print_trajs)
+        assert len(transition_traj)-1 == len(full_trajs)
+        transition_traj[len(full_trajs)].tag = 'return2idle'
     else:
-        assert len(transition_traj) == len(print_trajs)
+        assert len(transition_traj) == len(full_trajs)
 
     # * weave the Cartesian and transition processses together
-    for cp_id, print_trajs in enumerate(full_trajs):
-        print_trajs.insert(0, transition_traj[cp_id])
+    for cp_id, cp_print_trajs in enumerate(full_trajs):
+        cp_print_trajs.insert(0, transition_traj[cp_id])
     if return2idle:
-        full_trajs[-1].append(transition_traj[-1])
+        full_trajs[len(full_trajs)].append(transition_traj[len(full_trajs)])
 
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
@@ -315,13 +314,15 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
-    jt_res = 0.05 # 0.01
-    shrink = 0.01 # m
-    radius = 2e-6
+    jt_res = 0.01 # 0.01
+    shrink = 0.00 # m
+    # radius = 2e-6
+    radius = 2e-3
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
-    MAX_DISTANCE = 0.005
+    MAX_DISTANCE = 0.01
+    prescribed_resolve_ids = []
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -356,39 +357,48 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     # * parse saved trajectory
     old_full_trajs = parse_saved_trajectory(save_file_path)
     print_trajs = []
+    resolve_cp_ids = set(prescribed_resolve_ids)
     for cp_id, cp_trajs in enumerate(old_full_trajs):
         cp_print_trajs = []
-        for trajectory in cp_trajs:
-            if not isinstance(trajectory, MotionTrajectory):
+        found_transition_traj = False
+        for sp_id, trajectory in enumerate(cp_trajs):
+            if isinstance(trajectory, MotionTrajectory):
+                if trajectory.traj_path is not None and len(trajectory.traj_path) > 0:
+                    found_transition_traj = True
+            else:
                 cp_print_trajs.append(trajectory)
+        if not found_transition_traj:
+            cprint('#{}: no transition traj found in the saved file.'.format(cp_id), 'green', 'on_red')
+            resolve_cp_ids.add(cp_id)
         print_trajs.append(cp_print_trajs)
-    full_trajs = print_trajs
 
     # * transition motion planning between extrusions
     return2idle = True
-    transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
-                                                                   disabled_collisions=disabled_self_collisions,
-                                                                   obstacles=[workspace], return2idle=return2idle,
-                                                                   resolutions=[jt_res]*len(ik_joints),
-                                                                #    restarts=RRT_RESTARTS,
-                                                                #    iterations=RRT_ITERATIONS,
-                                                                   smooth=SMOOTH, max_distance=MAX_DISTANCE)
-    assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj)
-    if return2idle:
-        transition_traj[-1].tag = 'return2idle'
-        assert len(transition_traj)-1 == len(print_trajs)
-    else:
-        assert len(transition_traj) == len(print_trajs)
+    resolved_trans_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
+                                                                       disabled_collisions=disabled_self_collisions,
+                                                                       obstacles=[workspace], return2idle=return2idle,
+                                                                       resolutions=[jt_res]*len(ik_joints),
+                                                                    #    restarts=RRT_RESTARTS,
+                                                                    #    iterations=RRT_ITERATIONS,
+                                                                       smooth=SMOOTH, max_distance=MAX_DISTANCE,
+                                                                    #    ids_for_resolve=list(resolve_cp_ids)
+                                                                       )
 
     # * weave the Cartesian and transition processses together
-    for cp_id, ctrajs in enumerate(full_trajs):
-        ctrajs.insert(0, transition_traj[cp_id])
-    if return2idle:
-        full_trajs[-1].append(transition_traj[-1])
+    for cp_id, trans_traj in resolved_trans_traj.items():
+        if cp_id == len(old_full_trajs):
+            old_full_trajs[cp_id].append(trans_traj)
+        else:
+            for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
+                if isinstance(trajectory, MotionTrajectory):
+                    if trajectory.traj_path is None or len(trajectory.traj_path) == 0:
+                        cp_trajs.remove(trajectory)
+            assert len(old_full_trajs[cp_id]) == 3
+            old_full_trajs[cp_id].insert(0, trans_traj)
 
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
-    export_trajectory(save_dir, full_trajs, ee_link_name,
+    export_trajectory(save_dir, old_full_trajs, ee_link_name,
         indent=None, shape_file_path=file_path, include_robot_data=False, include_link_path=True)
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
@@ -397,7 +407,7 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
 
     # visualize plan
     if viewer:
-        display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
+        display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, old_full_trajs,
                              workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.07, tr_time_step=0.01)
 
 @pytest.mark.extrusion_viz

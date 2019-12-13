@@ -9,7 +9,7 @@ class Trajectory(object):
     def __init__(self, robot, joints, traj_path, tag=None, ee_attachments=None, attachments=None):
         self.robot = robot
         self.joints = joints
-        self.traj_path = traj_path
+        self.traj_path = traj_path or []
         self.path_from_link = {}
         self._ee_attachments = ee_attachments or []
         self._attachments = attachments or []

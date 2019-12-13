@@ -170,8 +170,8 @@ def parse_feasible_ee_maps(file_path):
         presumed_roll_disc = data['roll_disc']
         presumed_pitch_disc = data['pitch_disc']
 
-    e_fmaps = {}
-    disc_maps = {}
+    e_fmaps = OrderedDict()
+    disc_maps = OrderedDict()
     for fdata in data['ee_fdir_maps']:
         element = tuple(fdata['element'])
         f_ids = fdata['fmap_ids']
