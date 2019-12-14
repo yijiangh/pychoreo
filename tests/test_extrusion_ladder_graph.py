@@ -99,18 +99,18 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
-    sample_time = 30
-    sparse_time_out = 1 # 900
+    sample_time = 60
+    sparse_time_out = 300 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
-    roll_disc = 100 # 60
-    pitch_disc = 100
+    roll_disc = 60 # 60
+    pitch_disc = 60
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     approach_distance = 0.025 # ! a bug when 0.03?
-    linear_step_size = 0.003 # m
+    linear_step_size = 0.0009 # m
     jt_res = 0.1 # 0.01
-    radius = 1e-6 # 0.002
-    shrink = 0.01 # m
+    radius = 1e-3 # 0.002
+    shrink = 0.005 # 0.01 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -193,10 +193,13 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         cprint('Precomputed sequence and feasible_ee_maps loaded.', 'green')
         element_sequence = [tuple(e) for e in parsed_ee_fmaps.keys()]
         disc_maps = parsed_disc_maps
+        cnt = 0
         for element, ee_fmap in parsed_ee_fmaps.items():
             if sum(ee_fmap) == 0 or len(ee_fmap) == 0:
-                print('Parsed ee_fmap for {} empty, Changing disc to {}x{}'.format(element, roll_disc, pitch_disc))
+                print('#{}: Parsed ee_fmap for {} empty, Changing disc to {}x{}'.format(cnt, element, roll_disc, pitch_disc))
                 disc_maps[element] = (roll_disc, pitch_disc)
+                cnt += 1
+        print('=' * 10)
 
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
@@ -321,11 +324,11 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.01 # 0.01
     shrink = 0.00 # m
     # radius = 2e-6
-    radius = 2e-6
+    radius = 1e-3
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
-    MAX_DISTANCE = 0.00
+    MAX_DISTANCE = 0.005
     resolve_all = False
     prescribed_resolve_ids = []
 

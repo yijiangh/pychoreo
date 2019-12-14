@@ -84,13 +84,13 @@ def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
         ee_dir2element_angle = angle_between(element_dir, ee_dir)
         pf_cost = lower_cost + (upper_cost - lower_cost) * (np.pi - ee_dir2element_angle) / np.pi
 
-        # TODO: encourage the cooling pipe to be parellel to the element dir
-        if ee_dir2element_angle < np.pi - (5.0/180)*np.pi:
-            cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
-            perp_dir = np.cross(ee_dir, element_dir)
-            cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
-            # we want this to be close to 0
-            pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+        # # TODO: encourage the cooling pipe to be parellel to the element dir
+        # if ee_dir2element_angle < np.pi - (5.0/180)*np.pi:
+        #     cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+        #     perp_dir = np.cross(ee_dir, element_dir)
+        #     cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+        #     # we want this to be close to 0
+        #     pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
 
         return pf_cost
     return cost_val_fn
@@ -102,12 +102,12 @@ def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
         ee_dir2element_angle = angle_between(element_dir, ee_dir)
         pf_cost = lower_cost + (upper_cost - lower_cost) * abs(ee_dir2element_angle - np.pi/2) / np.pi
 
-        # TODO: encourage the cooling pipe to be parellel to the element dir
-        cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
-        perp_dir = np.cross(ee_dir, element_dir)
-        cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
-        # we want this to be close to 0
-        pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+        # # TODO: encourage the cooling pipe to be parellel to the element dir
+        # cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+        # perp_dir = np.cross(ee_dir, element_dir)
+        # cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+        # # we want this to be close to 0
+        # pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
 
         return pf_cost
     return cost_val_fn
@@ -189,16 +189,15 @@ def build_extrusion_cartesian_process_sequence(
 
         ee_pose_map_fn = ee_pose_map_fn_from_element[element]
         if verbose : print('----\nPruning candidate poses for E#{}'.format(element))
-        if not is_ground(element, ground_nodes):
-            # before_sum = sum(e_fmaps[element])
-            # diagnosis = True if seq_id == 19 else False
-            if use_parsed_fmaps and sum(ee_fmap_from_element[element]) > 0:
-                print('Using parsed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
-                    disc_maps[element][0], disc_maps[element][1]))
-            else:
-                if sum(ee_fmap_from_element[element]) == 0:
-                    ee_fmap_from_element[element] = [1 for _ in range(
-                        disc_maps[element][0] * disc_maps[element][1])]
+        if use_parsed_fmaps and sum(ee_fmap_from_element[element]) > 0:
+            print('Using parsed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
+                disc_maps[element][0], disc_maps[element][1]))
+        else:
+            domain_size = disc_maps[element][0] * disc_maps[element][1]
+            if sum(ee_fmap_from_element[element]) == 0:
+                ee_fmap_from_element[element] = [1 for _ in range(domain_size)]
+
+            if not is_ground(element, ground_nodes):
                 if extrusion_tag == 'connect':
                     # prune the one that causes the EE to collide with the element
                     for k in range(domain_size):
@@ -223,29 +222,29 @@ def build_extrusion_cartesian_process_sequence(
                                                                  sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
                                                                  diagnosis=diagnosis)
 
-                print('Computed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
-                    disc_maps[element][0], disc_maps[element][1]))
-            # TODO: put this back later
-            # assert sum(ee_fmap_from_element[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
-            if sum(ee_fmap_from_element[element]) == 0:
-                cprint('E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element),
-                    'green', 'on_red')
+                cprint('Computed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
+                       disc_maps[element][0], disc_maps[element][1]), 'green')
+            else:
+                # we only allow negative z direction for grounded elements
+                direction_poses = [Pose(euler=Euler(pitch=np.pi))]
+                ee_fmap_from_element[element] = [0 for _ in range(domain_size)]
+                for dir_pose in direction_poses:
+                    ee_fmap_from_element[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
+                print('Grounded element, only -z direction allowed.')
 
-            # use pruned direction set to gen ee path poses
-            direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(ee_fmap_from_element[element]) if is_feasible]
+        # TODO: put this back later
+        # assert sum(ee_fmap_from_element[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)
+        if sum(ee_fmap_from_element[element]) == 0:
+            cprint('seq#{}/{} : E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(seq_id, len(element_seq)-1, element),
+                'green', 'on_red')
 
-            # json_data[extrusion_tag] = {}
-            # json_data[extrusion_tag]['node_points'] = [pt.tolist() for pt in base_path_pts]
-            # json_data[extrusion_tag]['element_dir'] = element_dir.tolist()
-            # json_data[extrusion_tag]['direction_poses'] = [get_ee_pointing_direction(eep).tolist() for eep in direction_poses]
-        else:
-            # we only allow negative z direction for grounded elements
-            direction_poses = [Pose(euler=Euler(pitch=np.pi))]
-            domain_size = len(ee_fmap_from_element[element])
-            ee_fmap_from_element[element] = [0 for _ in range(domain_size)]
-            for dir_pose in direction_poses:
-                ee_fmap_from_element[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
-            print('Grounded element, only -z direction allowed.')
+        # use pruned direction set to gen ee path poses
+        direction_poses = [ee_pose_map_fn(i) for i, is_feasible in enumerate(ee_fmap_from_element[element]) if is_feasible]
+
+        # json_data[extrusion_tag] = {}
+        # json_data[extrusion_tag]['node_points'] = [pt.tolist() for pt in base_path_pts]
+        # json_data[extrusion_tag]['element_dir'] = element_dir.tolist()
+        # json_data[extrusion_tag]['direction_poses'] = [get_ee_pointing_direction(eep).tolist() for eep in direction_poses]
 
         if yaw_sample_size < INF:
             yaw_gen = interval_generator([-np.pi]*yaw_sample_size, [np.pi]*yaw_sample_size)

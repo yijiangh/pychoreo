@@ -110,5 +110,6 @@ ENV/
 # generated results
 tests/results/*
 tests/test_data/*.json
+tests/test_data/extrusion_log/*
 
 *.stlbak

@@ -8,6 +8,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_robot_base_plate.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_robot_base_plate.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_backwall">
     <collision>
@@ -15,6 +20,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_back_wall.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_back_wall.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_fab_table">
     <collision>
@@ -22,6 +32,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_fab_table.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_fab_table.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_front_wall">
     <collision>
@@ -29,6 +44,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_front_wall.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_front_wall.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_right_corner_piece">
     <collision>
@@ -36,6 +56,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_right_corner_piece.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_right_corner_piece.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_left_wall">
     <collision>
@@ -43,6 +68,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_left_wall.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_left_wall.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="MIT_3412_right_wall">
     <collision>
@@ -50,6 +80,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_right_wall.stl"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/MIT_3-412_right_wall.stl"/>
+      </geometry>
+    </virtual>
   </link>
   <link name="print_table">
     <collision>
@@ -57,6 +92,11 @@
         <mesh filename="../meshes/mit_3-412_workspace/collision/print_table.obj" scale=".001 .001 .001"/>
       </geometry>
     </collision>
+    <virtual>
+      <geometry>
+        <mesh filename="../meshes/mit_3-412_workspace/collision/print_table.obj" scale=".001 .001 .001"/>
+      </geometry>
+    </virtual>
   </link>
 
   <joint name="workspace_baselink_to_MIT_3412_robot_base_plate" type="fixed">
@@ -97,7 +137,7 @@
   <joint name="workspace_baselink_to_print_table" type="fixed">
     <parent link="workspace_base_link"/>
     <child link="print_table"/>
-    <origin rpy="0 0 0" xyz="0.7 0 0.024"/>
+    <origin rpy="0 0 0" xyz="0.7 0 0.022"/>
   </joint>
 
   <!-- end of link list -->
