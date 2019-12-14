@@ -13,7 +13,8 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
                                                  **kwargs):
     if ids_for_resolve is None:
         print('Resolving all the transition trajectories.')
-        ids_for_resolve = list(range(len(print_trajs)))
+        full_len = len(print_trajs)+1 if return2idle else len(print_trajs)
+        ids_for_resolve = list(range(full_len))
     else:
         if len(ids_for_resolve) == 0:
             ids_for_resolve = list(range(len(print_trajs)))
@@ -30,18 +31,17 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
             continue
         if seq_id < len(print_trajs):
             print('transition seq #{}/{}'.format(seq_id, len(print_trajs)-1))
-            # if not print_trajs[seq_id-1].traj_path or not print_trajs[seq_id].traj_path:
-            #     warnings.warn('print trajectory {} or {} not found, skip'.format(seq_id-1, seq_id))
-            #     continue
             if seq_id != 0:
                 tr_start_conf = print_trajs[seq_id-1][-1].traj_path[-1]
             else:
                 tr_start_conf = initial_conf
             tr_end_conf = print_trajs[seq_id][0].traj_path[0]
+            tag_msg = 'transition2E#{}'.format(tuple(print_trajs[seq_id][0].element))
         elif return2idle:
             print('plan for returning to idle position.')
             tr_start_conf = print_trajs[-1][-1].traj_path[-1]
             tr_end_conf = initial_conf
+            tag_msg = 'return2idle'
         else:
             break
         # TODO: can use robot, joints from the trajectory class itself as well
@@ -69,7 +69,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
 
             print('end pose:')
             cfn(tr_end_conf, diagnosis=True)
-        trans_traj[seq_id] = MotionTrajectory(robot, ik_joints, tr_path)
+        trans_traj[seq_id] = MotionTrajectory(robot, ik_joints, tr_path, tag=tag_msg, planner_parameters=kwargs)
         # add printed element to the built obstacles
         if seq_id < len(print_trajs):
             built_obstacles.append(element_bodies[tuple(print_trajs[seq_id][0].element)])

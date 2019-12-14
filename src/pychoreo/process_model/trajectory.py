@@ -95,18 +95,25 @@ class Trajectory(object):
         return 'Traj{}|len#{}'.format(self.tag, len(self.traj_path))
 
 class MotionTrajectory(Trajectory):
-    def __init__(self, robot, joints, traj_path, tag='', ee_attachments=None, attachments=None, element_id=None):
+    def __init__(self, robot, joints, traj_path, tag='', ee_attachments=None, attachments=None, element_id=None,
+        planner_parameters=None):
         super(MotionTrajectory, self).__init__(robot, joints, traj_path, tag, ee_attachments, attachments)
         self._element_id = element_id
+        self._planner_parameters = planner_parameters or ''
 
     @property
     def element_id(self):
         return self._element_id
 
+    @property
+    def planner_parameters(self):
+        return self._planner_parameters
+
     def to_data(self, include_robot_data=False, include_link_path=False):
         data = super(MotionTrajectory, self).to_data(include_robot_data, include_link_path)
         data['traj_type'] = self.__class__.__name__
         data['element_id'] = self.element_id
+        data['planner_parameters'] = self.planner_parameters
         return data
 
     @classmethod
@@ -121,7 +128,9 @@ class MotionTrajectory(Trajectory):
         traj_path = data['traj_path']
         ee_attachments = [Attachment.from_data(at_data) for at_data in data['ee_attachments']]
         attachments = [Attachment.from_data(at_data) for at_data in data['attachments']]
-        return cls(robot, joints, traj_path, data['tag'], ee_attachments, attachments, data['element_id'])
+        element_id = data['element_id'] if 'element_id' in data else None
+        planner_parameters = data['planner_parameters'] if 'planner_parameters' in data else ''
+        return cls(robot, joints, traj_path, data['tag'], ee_attachments, attachments, element_id, planner_parameters)
 
     # TODO: from_data, parse attachments
 

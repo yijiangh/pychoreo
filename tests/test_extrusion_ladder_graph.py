@@ -100,7 +100,7 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 30
-    sparse_time_out = 60 # 900
+    sparse_time_out = 1 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
     roll_disc = 100 # 60
@@ -289,15 +289,19 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     assert all(isinstance(tt, MotionTrajectory) for tt in transition_traj.values())
     if return2idle:
         assert len(transition_traj)-1 == len(full_trajs)
-        transition_traj[len(full_trajs)].tag = 'return2idle'
     else:
         assert len(transition_traj) == len(full_trajs)
 
     # * weave the Cartesian and transition processses together
-    for cp_id, cp_print_trajs in enumerate(full_trajs):
-        cp_print_trajs.insert(0, transition_traj[cp_id])
-    if return2idle:
-        full_trajs[len(full_trajs)].append(transition_traj[len(full_trajs)])
+    for cp_id, trans_traj in transition_traj.items():
+        if cp_id == len(full_trajs):
+            full_trajs[cp_id-1].append(trans_traj)
+        else:
+            if not trans_traj.traj_path:
+                cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
+                    'green', 'on_red')
+            assert len(full_trajs[cp_id]) == 3
+            full_trajs[cp_id].insert(0, trans_traj)
 
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
@@ -317,11 +321,12 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.01 # 0.01
     shrink = 0.00 # m
     # radius = 2e-6
-    radius = 2e-3
+    radius = 2e-6
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
-    MAX_DISTANCE = 0.01
+    MAX_DISTANCE = 0.00
+    resolve_all = False
     prescribed_resolve_ids = []
 
     # * create robot and pb environment
@@ -381,18 +386,20 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
                                                                     #    restarts=RRT_RESTARTS,
                                                                     #    iterations=RRT_ITERATIONS,
                                                                        smooth=SMOOTH, max_distance=MAX_DISTANCE,
-                                                                    #    ids_for_resolve=list(resolve_cp_ids)
+                                                                       ids_for_resolve=list(resolve_cp_ids) if not resolve_all else None
                                                                        )
 
     # * weave the Cartesian and transition processses together
     for cp_id, trans_traj in resolved_trans_traj.items():
         if cp_id == len(old_full_trajs):
-            old_full_trajs[cp_id].append(trans_traj)
+            old_full_trajs[cp_id-1].append(trans_traj)
         else:
+            if not trans_traj.traj_path:
+                cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
+                    'green', 'on_red')
             for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
                 if isinstance(trajectory, MotionTrajectory):
-                    if trajectory.traj_path is None or len(trajectory.traj_path) == 0:
-                        cp_trajs.remove(trajectory)
+                    old_full_trajs[cp_id].remove(trajectory)
             assert len(old_full_trajs[cp_id]) == 3
             old_full_trajs[cp_id].insert(0, trans_traj)
 
