@@ -75,7 +75,7 @@ def get_cooling_pipe_direction(ee_pose):
     y_axis = matrix_from_quat(quat)[:, 1]
     return y_axis
 
-COOLING_COST_RATIO = 0.01
+COOLING_COST_RATIO = 0.1
 
 def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
     # prefer the directions that are closer to the element direction
@@ -84,13 +84,13 @@ def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
         ee_dir2element_angle = angle_between(element_dir, ee_dir)
         pf_cost = lower_cost + (upper_cost - lower_cost) * (np.pi - ee_dir2element_angle) / np.pi
 
-        # # TODO: encourage the cooling pipe to be parellel to the element dir
-        # if ee_dir2element_angle < np.pi - (5.0/180)*np.pi:
-        #     cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
-        #     perp_dir = np.cross(ee_dir, element_dir)
-        #     cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
-        #     # we want this to be close to 0
-        #     pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+        # TODO: encourage the cooling pipe to be parellel to the element dir
+        if ee_dir2element_angle < np.pi - (30.0/180)*np.pi:
+            cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+            perp_dir = np.cross(ee_dir, element_dir)
+            cooling_cost = abs(perp_dir.dot(cooling_dir)) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+            # we want this to be close to 0
+            pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
 
         return pf_cost
     return cost_val_fn
@@ -102,12 +102,12 @@ def get_connect_preference_eval_fn(element_dir, lower_cost, upper_cost):
         ee_dir2element_angle = angle_between(element_dir, ee_dir)
         pf_cost = lower_cost + (upper_cost - lower_cost) * abs(ee_dir2element_angle - np.pi/2) / np.pi
 
-        # # TODO: encourage the cooling pipe to be parellel to the element dir
-        # cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
-        # perp_dir = np.cross(ee_dir, element_dir)
-        # cooling_cost = perp_dir.dot(cooling_dir) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
-        # # we want this to be close to 0
-        # pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
+        # TODO: encourage the cooling pipe to be parellel to the element dir
+        cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
+        perp_dir = np.cross(ee_dir, element_dir)
+        cooling_cost = abs(perp_dir.dot(cooling_dir)) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
+        # we want this to be close to 0
+        pf_cost += cooling_cost * COOLING_COST_RATIO * (upper_cost - lower_cost)
 
         return pf_cost
     return cost_val_fn

@@ -29,7 +29,7 @@ from pychoreo_examples.extrusion.parsing import load_extrusion, create_elements_
     parse_feasible_ee_maps, save_feasible_ee_maps
 from pychoreo_examples.extrusion.visualization import set_extrusion_camera, draw_extrusion_sequence, display_trajectories
 from pychoreo_examples.extrusion.stream import get_extrusion_ee_pose_compose_fn, build_extrusion_cartesian_process_sequence
-from pychoreo_examples.extrusion.utils import max_valence_extrusion_direction_routing
+from pychoreo_examples.extrusion.utils import extrusion_direction_routing
 from pychoreo_examples.extrusion.transition_planner import solve_transition_between_extrusion_processes
 
 import ikfast_kuka_kr6_r900
@@ -100,7 +100,7 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 60
-    sparse_time_out = 300 # 900
+    sparse_time_out = 5 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
     roll_disc = 60 # 60
@@ -115,6 +115,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     # RRT_ITERATIONS = 40
     SMOOTH = 30
     MAX_DISTANCE = 0.01 # 0.01
+    routing_heuristic = 'z' # 'max_valence'
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -204,7 +205,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     assert all(isinstance(e, tuple) and len(e) == 2 for e in element_sequence)
 
     # * compute reverse flags based on the precomputed sequence
-    reverse_flags = max_valence_extrusion_direction_routing(element_sequence, elements, node_points, ground_nodes)
+    reverse_flags = extrusion_direction_routing(element_sequence, elements, node_points, ground_nodes, heuristic=routing_heuristic)
 
     # * construct ignored body-body links for collision checking
     # in this case, including self-collision between links of the robot

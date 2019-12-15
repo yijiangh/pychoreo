@@ -36,7 +36,7 @@ def get_element_neighbors(elements):
 
 ##################################################
 
-def max_valence_extrusion_direction_routing(element_sequence, elements, node_points, grounded_node_ids):
+def extrusion_direction_routing(element_sequence, elements, node_points, grounded_node_ids, heuristic='max_valence'):
     reverse_flags = {e : False for e in elements}
     current_node_neighbors = defaultdict(set)
     for seq_id, e in enumerate(element_sequence):
@@ -52,6 +52,9 @@ def max_valence_extrusion_direction_routing(element_sequence, elements, node_poi
             if n2 in grounded_node_ids:
                 reverse_flags[e] = True
         # prefer starting with the node with a larger valence
-        elif len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]):
-            reverse_flags[e] = True
+        else:
+            if heuristic == 'max_valence' and len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]):
+                reverse_flags[e] = True
+            elif heuristic == 'z' and node_points[n1][2] > node_points[n2][2]:
+                reverse_flags[e] = True
     return reverse_flags
