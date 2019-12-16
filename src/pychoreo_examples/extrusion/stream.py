@@ -185,6 +185,7 @@ def build_extrusion_cartesian_process_sequence(
         collision_fn = get_collision_fn(robot, ik_joints, built_obstacles,
                                         attachments=[], self_collisions=self_collisions,
                                         disabled_collisions=disabled_collisions,
+                                        extra_disabled_collisions=extra_disabled_collisions,
                                         custom_limits={})
 
         ee_pose_map_fn = ee_pose_map_fn_from_element[element]
@@ -309,15 +310,14 @@ def build_extrusion_cartesian_process_sequence(
 ##################################################
 
 def prune_ee_feasible_directions(way_poses, free_pose_map, ee_pose_map_fn, ee_body, max_attempts=5,
-                                 self_collisions=True, disabled_collisions={},
-                                 obstacles=[], extra_disabled_collisions={},
+                                 obstacles=[],
                                  sub_process_ids=None,
                                  tool_from_root=None,
                                  check_ik=False, sample_ik_fn=lambda x : [],
                                  collision_fn=lambda x : False, diagnosis=False):
 
-    ee_collision_fn = get_floating_body_collision_fn(ee_body, obstacles,
-                                                     disabled_collisions=disabled_collisions)
+    ee_collision_fn = get_floating_body_collision_fn(ee_body, obstacles)
+                                                    #  disabled_collisions=disabled_collisions)
 
     if not sub_process_ids:
         sub_process_ids = list(zip(range(len(way_poses)), [list(range(len(sp_poses))) for sp_poses in way_poses]))

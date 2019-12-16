@@ -16,6 +16,7 @@ def extrusion_problem_path():
     # problem = 'topopt-101_tiny'
     # problem = 'topopt-205_rotated'
     problem = 'klein_bottle_trail_S2'
+    # problem = 'klein_bottle_trail'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {

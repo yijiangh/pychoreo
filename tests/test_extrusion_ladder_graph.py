@@ -100,7 +100,7 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 60
-    sparse_time_out = 600 # 900
+    sparse_time_out = 1 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
     roll_disc = 60 # 60
@@ -289,6 +289,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     transition_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                    disabled_collisions=disabled_self_collisions,
                                                                    obstacles=[workspace], return2idle=return2idle,
+                                                                   extra_disabled_collisions=extra_disabled_collisions,
                                                                    resolutions=[jt_res]*len(ik_joints),
                                                                 #    restarts=RRT_RESTARTS, iterations=RRT_ITERATIONS,
                                                                    smooth=SMOOTH, max_distance=MAX_DISTANCE)
@@ -325,7 +326,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.01 # 0.01
-    shrink = 0.00 # m
+    shrink = 0.003 # m
     # radius = 2e-6
     radius = 1e-3
     # RRT_RESTARTS = 5
@@ -333,7 +334,10 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     SMOOTH = 30
     MAX_DISTANCE = 0.01
     resolve_all = False
+    return2idle = True
     prescribed_resolve_ids = []
+    # prescribed_resolve_ids = [0, 1, 2, 14, 15, 26, 41, 42, 45, 46]
+    partial_process = False
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -365,7 +369,7 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
         assert all(isinstance(e_body, int) for e_body in element_bodies.values())
         set_extrusion_camera(node_points)
 
-    # * parse saved trajectory
+    # * parse the full saved trajectory
     old_full_trajs = parse_saved_trajectory(save_file_path)
     print_trajs = []
     resolve_cp_ids = set(prescribed_resolve_ids)
@@ -379,40 +383,61 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
             else:
                 cp_print_trajs.append(trajectory)
         if not found_transition_traj:
-            cprint('#{}: no transition traj found in the saved file.'.format(cp_id), 'green', 'on_red')
-            resolve_cp_ids.add(cp_id)
+            if not partial_process:
+                cprint('#{}-{}: no transition traj found in the saved file.'.format(cp_id, cp_trajs[1].element),
+                    'green', 'on_red')
+                resolve_cp_ids.add(cp_id)
         print_trajs.append(cp_print_trajs)
 
     # * transition motion planning between extrusions
-    return2idle = True
     resolved_trans_traj = solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, element_bodies, initial_conf,
                                                                        disabled_collisions=disabled_self_collisions,
                                                                        obstacles=[workspace], return2idle=return2idle,
+                                                                       extra_disabled_collisions=extra_disabled_collisions,
                                                                        resolutions=[jt_res]*len(ik_joints),
                                                                     #    restarts=RRT_RESTARTS,
                                                                     #    iterations=RRT_ITERATIONS,
                                                                        smooth=SMOOTH, max_distance=MAX_DISTANCE,
-                                                                       ids_for_resolve=list(resolve_cp_ids) if not resolve_all else None
-                                                                       )
+                                                                       ids_for_resolve=list(resolve_cp_ids) if not resolve_all else None,
+                                                                       partial_process=partial_process)
 
     # * weave the Cartesian and transition processses together
-    for cp_id, trans_traj in resolved_trans_traj.items():
-        if cp_id == len(old_full_trajs):
-            old_full_trajs[cp_id-1].append(trans_traj)
-        else:
-            if not trans_traj.traj_path:
-                cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
-                    'green', 'on_red')
-            for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
-                if isinstance(trajectory, MotionTrajectory):
-                    old_full_trajs[cp_id].remove(trajectory)
-            assert len(old_full_trajs[cp_id]) == 3
-            old_full_trajs[cp_id].insert(0, trans_traj)
+    if not partial_process:
+        for cp_id, trans_traj in resolved_trans_traj.items():
+            if cp_id == len(old_full_trajs):
+                old_full_trajs[-1].append(trans_traj)
+            else:
+                if not trans_traj.traj_path:
+                    cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
+                        'green', 'on_red')
+                for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
+                    if isinstance(trajectory, MotionTrajectory):
+                        old_full_trajs[cp_id].remove(trajectory)
+                assert len(old_full_trajs[cp_id]) == 3
+                old_full_trajs[cp_id].insert(0, trans_traj)
+        full_trajs = old_full_trajs
+    else:
+        full_trajs = []
+        for cp_id, trans_traj in resolved_trans_traj.items():
+            if cp_id == len(old_full_trajs):
+                full_trajs[-1].append(trans_traj)
+            else:
+                old_cart_trajs = old_full_trajs[cp_id]
+                if not trans_traj.traj_path:
+                    cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
+                        'green', 'on_red')
+                for sp_id, trajectory in enumerate(old_cart_trajs):
+                    if isinstance(trajectory, MotionTrajectory):
+                        old_cart_trajs.remove(trajectory)
+                assert len(old_full_trajs[cp_id]) == 3
+                old_cart_trajs.insert(0, trans_traj)
+                full_trajs.append(old_cart_trajs)
 
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
-    export_trajectory(save_dir, old_full_trajs, ee_link_name,
-        indent=None, shape_file_path=file_path, include_robot_data=False, include_link_path=True)
+    export_trajectory(save_dir, full_trajs, ee_link_name,
+        indent=None, shape_file_path=file_path, include_robot_data=False, include_link_path=True,
+        file_tag='partial_{}'.format(prescribed_resolve_ids) if partial_process else '', verbose=True)
 
     # * disconnect and close pybullet engine used for planning, visualizing trajectories will start a new one
     reset_simulation()
@@ -431,6 +456,7 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
 
     # * get problem & pre-computed json file paths
     file_path, _, _, result_file_name = extrusion_problem_path
+    result_file_name = 'klein_bottle_trail_S2_result_partial_[0, 1, 2, 14, 15, 26, 41, 42, 45, 46].json '
 
     # * load shape (get nodal positions)
     _, node_points, ground_nodes = load_extrusion(file_path)
@@ -439,15 +465,15 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     here = os.path.dirname(__file__)
     save_file_path = os.path.join(here, 'results', result_file_name)
 
-    # parse without connect
-    with pytest.warns(UserWarning, match='Pybullet environment not connected*'):
-        full_trajs = parse_saved_trajectory(save_file_path)
+    # # * parse without connect
+    # with pytest.warns(UserWarning, match='Pybullet environment not connected*'):
+    #     full_trajs = parse_saved_trajectory(save_file_path)
 
-    # parse with connect but robot body not added
-    connect(use_gui=False)
-    with pytest.raises(ValueError):
-        full_trajs = parse_saved_trajectory(save_file_path)
-    disconnect()
+    # # * parse with connect but robot body not added
+    # connect(use_gui=False)
+    # with pytest.raises(ValueError):
+    #     full_trajs = parse_saved_trajectory(save_file_path)
+    # disconnect()
 
     # parse with connect
     connect(use_gui=False)
@@ -457,6 +483,7 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
     disconnect()
 
     # visualize plan
+    cprint('Visualizing saved traj: {}'.format(save_file_path), 'green')
     if viewer:
         display_trajectories(robot_urdf, ik_joint_names, ee_link_name, node_points, ground_nodes, full_trajs,
-                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.1, tr_time_step=0.01)
+                             workspace_urdf=workspace_urdf, animate=True, cart_time_step=0.01, tr_time_step=0.01)
