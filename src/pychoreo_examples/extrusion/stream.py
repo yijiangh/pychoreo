@@ -75,7 +75,7 @@ def get_cooling_pipe_direction(ee_pose):
     y_axis = matrix_from_quat(quat)[:, 1]
     return y_axis
 
-COOLING_COST_RATIO = 0.1
+COOLING_COST_RATIO = 1 # 0.1
 
 def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
     # prefer the directions that are closer to the element direction
@@ -85,7 +85,7 @@ def get_create_preference_eval_fn(element_dir, lower_cost, upper_cost):
         pf_cost = lower_cost + (upper_cost - lower_cost) * (np.pi - ee_dir2element_angle) / np.pi
 
         # TODO: encourage the cooling pipe to be parellel to the element dir
-        if ee_dir2element_angle < np.pi - (30.0/180)*np.pi:
+        if ee_dir2element_angle < np.pi - (10.0/180)*np.pi:
             cooling_dir = get_cooling_pipe_direction(ee_poses[1][0])
             perp_dir = np.cross(ee_dir, element_dir)
             cooling_cost = abs(perp_dir.dot(cooling_dir)) / (np.linalg.norm(perp_dir) * np.linalg.norm(cooling_dir))
@@ -188,32 +188,38 @@ def build_extrusion_cartesian_process_sequence(
                                         custom_limits={})
 
         ee_pose_map_fn = ee_pose_map_fn_from_element[element]
-        if verbose : print('----\nPruning candidate poses for E#{}'.format(element))
+        if verbose : print('----\n{}/{}: Pruning candidate poses for E#{}'.format(seq_id, len(element_seq)-1, element))
+
+        domain_size = disc_maps[element][0] * disc_maps[element][1]
         if use_parsed_fmaps and sum(ee_fmap_from_element[element]) > 0:
-            print('Using parsed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
-                disc_maps[element][0], disc_maps[element][1]))
+            record_sum = sum(ee_fmap_from_element[element])
+            print('Using parsed ee maps: {} / {}x{}'.format(record_sum, disc_maps[element][0], disc_maps[element][1]))
+            parse_success = True
         else:
-            domain_size = disc_maps[element][0] * disc_maps[element][1]
             if sum(ee_fmap_from_element[element]) == 0:
                 ee_fmap_from_element[element] = [1 for _ in range(domain_size)]
+            parse_success = False
 
-            if not is_ground(element, ground_nodes):
-                if extrusion_tag == 'connect':
-                    # prune the one that causes the EE to collide with the element
-                    for k in range(domain_size):
-                        angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(k)))
-                        # TODO: move these parameters to arguement
-                        # TODO: maybe try np.pi / 3?
-                        if angle_to_element < np.pi/6 or angle_to_element > np.pi* 5/6:
-                            ee_fmap_from_element[element][k] = 0
-                    # print('connect, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
-                elif extrusion_tag == 'create':
-                    for i in range(domain_size):
-                        angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
-                        if angle_to_element < (1/3) * np.pi:
-                            ee_fmap_from_element[element][i] = 0
-                #     print('create, after sum: {}/{}'.format(sum(e_fmaps[element]), before_sum))
-                diagnosis = True
+        # dir pruning
+        if not is_ground(element, ground_nodes):
+            if extrusion_tag == 'connect':
+                # prune the one that causes the EE to collide with the element
+                for k in range(domain_size):
+                    angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(k)))
+                    # TODO: move these parameters to arguement
+                    # TODO: maybe try np.pi / 3?
+                    wave_angle = 70.0
+                    if angle_to_element < np.pi * (wave_angle/180.0) or angle_to_element > np.pi * (1-wave_angle/180.0):
+                        ee_fmap_from_element[element][k] = 0
+            elif extrusion_tag == 'create':
+                for i in range(domain_size):
+                    angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
+                    create_angle = 70.0
+                    if angle_to_element < (1 - create_angle/180.0) * np.pi:
+                        ee_fmap_from_element[element][i] = 0
+
+            if not parse_success:
+                diagnosis = False
                 ee_fmap_from_element[element] = prune_ee_feasible_directions(full_path_pts,
                                                                  ee_fmap_from_element[element], ee_pose_map_fn, ee_body,
                                                                  obstacles=obstacles,
@@ -225,12 +231,16 @@ def build_extrusion_cartesian_process_sequence(
                 cprint('Computed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
                        disc_maps[element][0], disc_maps[element][1]), 'green')
             else:
-                # we only allow negative z direction for grounded elements
-                direction_poses = [Pose(euler=Euler(pitch=np.pi))]
-                ee_fmap_from_element[element] = [0 for _ in range(domain_size)]
-                for dir_pose in direction_poses:
-                    ee_fmap_from_element[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
-                print('Grounded element, only -z direction allowed.')
+                new_sum = sum(ee_fmap_from_element[element])
+                if new_sum != record_sum:
+                    cprint('Parsed ee maps changed from {} to {}'.format(record_sum, new_sum), 'blue')
+        else:
+            # we only allow negative z direction for grounded elements
+            direction_poses = [Pose(euler=Euler(pitch=np.pi))]
+            ee_fmap_from_element[element] = [0 for _ in range(domain_size)]
+            for dir_pose in direction_poses:
+                ee_fmap_from_element[element][find_closest_map_id_to_pose_dir(dir_pose, domain_size, ee_pose_map_fn)] = 1
+            print('Grounded element, only -z direction allowed.')
 
         # TODO: put this back later
         # assert sum(ee_fmap_from_element[element]) > 0, 'E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element)

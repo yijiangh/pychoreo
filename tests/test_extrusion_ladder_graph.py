@@ -100,7 +100,7 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 60
-    sparse_time_out = 5 # 900
+    sparse_time_out = 600 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
     roll_disc = 60 # 60
@@ -110,7 +110,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     linear_step_size = 0.0009 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.005 # 0.01 # m
+    shrink = 0.004 # 0.01 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -233,11 +233,13 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
         # sanity check
         exist_nonfeasible = False
+        cnt = 0
         for element, fmap in e_fmaps.items():
             if sum(fmap) == 0:
                 exist_nonfeasible = True
-                cprint('E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(element),
+                cprint('#{}: E#{} feasible map empty, precomputed sequence should have a feasible ee pose range!'.format(cnt, element),
                     'green', 'on_red')
+            cnt += 1
         assert not exist_nonfeasible
 
     assert isinstance(cart_process_seq, list)
@@ -329,7 +331,7 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
-    MAX_DISTANCE = 0.005
+    MAX_DISTANCE = 0.01
     resolve_all = False
     prescribed_resolve_ids = []
 
