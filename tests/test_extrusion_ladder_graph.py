@@ -110,7 +110,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     linear_step_size = 0.0009 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.004 # 0.01 # m
+    shrink = 0.002 # 0.003 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -298,6 +298,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
         assert len(transition_traj)-1 == len(full_trajs)
     else:
         assert len(transition_traj) == len(full_trajs)
+    print('Transition planning finished.')
 
     # * weave the Cartesian and transition processses together
     for cp_id, trans_traj in transition_traj.items():
@@ -325,14 +326,14 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
-    jt_res = 0.01 # 0.01
-    shrink = 0.003 # m
+    jt_res = 0.1 # 0.01
+    shrink = 0.006 # m
     # radius = 2e-6
     radius = 1e-3
-    # RRT_RESTARTS = 5
-    # RRT_ITERATIONS = 40
+    RRT_RESTARTS = 5
+    RRT_ITERATIONS = 40
     SMOOTH = 30
-    MAX_DISTANCE = 0.01
+    MAX_DISTANCE = 0.00
     resolve_all = False
     return2idle = True
     prescribed_resolve_ids = []
@@ -384,8 +385,12 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
                 cp_print_trajs.append(trajectory)
         if not found_transition_traj:
             if not partial_process:
-                cprint('#{}-{}: no transition traj found in the saved file.'.format(cp_id, cp_trajs[1].element),
-                    'green', 'on_red')
+                try:
+                    cprint('#{}-{}: no transition traj found in the saved file.'.format(cp_id, cp_trajs[-1].element),
+                        'green', 'on_red')
+                except:
+                    for sp_id, trajectory in enumerate(cp_trajs):
+                        print(trajectory)
                 resolve_cp_ids.add(cp_id)
         print_trajs.append(cp_print_trajs)
 
@@ -395,26 +400,35 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
                                                                        obstacles=[workspace], return2idle=return2idle,
                                                                        extra_disabled_collisions=extra_disabled_collisions,
                                                                        resolutions=[jt_res]*len(ik_joints),
-                                                                    #    restarts=RRT_RESTARTS,
-                                                                    #    iterations=RRT_ITERATIONS,
+                                                                       restarts=RRT_RESTARTS,
+                                                                       iterations=RRT_ITERATIONS,
                                                                        smooth=SMOOTH, max_distance=MAX_DISTANCE,
                                                                        ids_for_resolve=list(resolve_cp_ids) if not resolve_all else None,
                                                                        partial_process=partial_process)
+    print('Transition planning finished.')
 
     # * weave the Cartesian and transition processses together
     if not partial_process:
         for cp_id, trans_traj in resolved_trans_traj.items():
             if cp_id == len(old_full_trajs):
-                old_full_trajs[-1].append(trans_traj)
+                if not trans_traj.traj_path:
+                    cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
+                        'green', 'on_red')
+                kept_cart_traj = []
+                for sp_id, trajectory in enumerate(old_full_trajs[cp_id-1]):
+                    if trajectory.tag != 'return2idle':
+                        kept_cart_traj.append(trajectory)
+                old_full_trajs[cp_id-1] = kept_cart_traj + [trans_traj]
             else:
                 if not trans_traj.traj_path:
                     cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
                         'green', 'on_red')
+                kept_cart_traj = []
                 for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
-                    if isinstance(trajectory, MotionTrajectory):
-                        old_full_trajs[cp_id].remove(trajectory)
-                assert len(old_full_trajs[cp_id]) == 3
-                old_full_trajs[cp_id].insert(0, trans_traj)
+                    if not isinstance(trajectory, MotionTrajectory):
+                        kept_cart_traj.append(trajectory)
+                assert len(kept_cart_traj) == 3
+                old_full_trajs[cp_id] = [trans_traj] + kept_cart_traj
         full_trajs = old_full_trajs
     else:
         full_trajs = []
@@ -422,16 +436,17 @@ def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
             if cp_id == len(old_full_trajs):
                 full_trajs[-1].append(trans_traj)
             else:
-                old_cart_trajs = old_full_trajs[cp_id]
+                kept_cart_traj = []
+                for sp_id, trajectory in enumerate(old_full_trajs[cp_id]):
+                    if not isinstance(trajectory, MotionTrajectory):
+                        kept_cart_traj.append(trajectory)
+                assert len(kept_cart_traj) == 3
                 if not trans_traj.traj_path:
                     cprint('seq #{}:{} cannot find transition path'.format(cp_id, trans_traj.tag),
                         'green', 'on_red')
-                for sp_id, trajectory in enumerate(old_cart_trajs):
-                    if isinstance(trajectory, MotionTrajectory):
-                        old_cart_trajs.remove(trajectory)
-                assert len(old_full_trajs[cp_id]) == 3
-                old_cart_trajs.insert(0, trans_traj)
-                full_trajs.append(old_cart_trajs)
+                else:
+                    kept_cart_traj = [trans_traj] + kept_cart_traj
+                full_trajs.append(kept_cart_traj)
 
     here = os.path.dirname(__file__)
     save_dir = os.path.join(here, 'results')
@@ -456,7 +471,7 @@ def test_parse_and_visualize_results(viewer, extrusion_problem_path, extrusion_r
 
     # * get problem & pre-computed json file paths
     file_path, _, _, result_file_name = extrusion_problem_path
-    result_file_name = 'klein_bottle_trail_S2_result_partial_[0, 1, 2, 14, 15, 26, 41, 42, 45, 46].json '
+    # result_file_name = 'klein_bottle_trail_S2_result_partial_[0, 1, 2, 14, 15, 26, 41, 42, 45, 46].json '
 
     # * load shape (get nodal positions)
     _, node_points, ground_nodes = load_extrusion(file_path)

@@ -26,6 +26,7 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
             ids_for_resolve = sorted(ids_for_resolve)
             print('Only the following ids will be resolved: {}'.format(ids_for_resolve))
             if return2idle and len(print_trajs) not in ids_for_resolve:
+                print('return2idle index {} added.'.format(len(print_trajs)))
                 ids_for_resolve.append(len(print_trajs))
             if partial_process:
                 cprint('Only solving transitions between the specified ids, ignoring all others.', 'magenta')
@@ -35,27 +36,41 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
         if seq_id not in ids_for_resolve:
             # TODO: even if the seq_id is not solved, its printed element is added as a collision object
             if seq_id < len(print_trajs): #and not partial_process:
-                built_obstacles.append(element_bodies[tuple(print_trajs[seq_id][0].element)])
+                try:
+                    built_obstacles.append(element_bodies[tuple(print_trajs[seq_id][0].element)])
+                except:
+                    warnings.warn('element attribute not specified in print traj: {}'.format(print_trajs[seq_id][0]))
+                    for pt in print_trajs[seq_id]:
+                        cprint(pt, 'yellow')
             continue
         if seq_id < len(print_trajs):
-            if ids_for_resolve.index(seq_id) > 0:
-                last_seq_id = ids_for_resolve[ids_for_resolve.index(seq_id) - 1]
-                if not partial_process:
-                    assert last_seq_id == seq_id - 1
-                tr_start_conf = print_trajs[last_seq_id][-1].traj_path[-1]
+            if not partial_process:
+                if seq_id > 0:
+                    last_seq_id = seq_id - 1
+                    tr_start_conf = print_trajs[last_seq_id][-1].traj_path[-1]
+                else:
+                    tr_start_conf = initial_conf
             else:
-                tr_start_conf = initial_conf
+                if ids_for_resolve.index(seq_id) > 0:
+                    last_seq_id = ids_for_resolve[ids_for_resolve.index(seq_id) - 1]
+                    tr_start_conf = print_trajs[last_seq_id][-1].traj_path[-1]
+                else:
+                    tr_start_conf = initial_conf
             tr_end_conf = print_trajs[seq_id][0].traj_path[0]
             tag_msg = 'Tr2 E#{}'.format(tuple(print_trajs[seq_id][0].element))
-            print('transition seq #{}/{}: {}'.format(seq_id, len(print_trajs)-1, tag_msg))
         elif return2idle:
-            last_id = ids_for_resolve[-2]
+            if partial_process:
+                last_id = ids_for_resolve[-2]
+                if last_id > len(print_trajs) - 1: last_id = len(print_trajs) - 1
+            else:
+                last_id = len(print_trajs) - 1
             tr_start_conf = print_trajs[last_id][-1].traj_path[-1]
             tr_end_conf = initial_conf
             tag_msg = 'return2idle'
-            print('plan for returning to idle position.')
         else:
             break
+        print('='*10)
+        print('transition seq #{}/{}: {}'.format(seq_id, len(print_trajs)-1, tag_msg))
         # TODO: can use robot, joints from the trajectory class itself as well
         set_joint_positions(robot, ik_joints, tr_start_conf)
         tr_path = plan_joint_motion(robot, ik_joints, tr_end_conf,
@@ -83,7 +98,9 @@ def solve_transition_between_extrusion_processes(robot, ik_joints, print_trajs, 
 
             print('end pose:')
             cfn(tr_end_conf, diagnosis=True)
-        trans_traj[seq_id] = MotionTrajectory(robot, ik_joints, tr_path, tag=tag_msg, planner_parameters=kwargs)
+        else:
+            cprint('Trajectory found!', 'green')
+        trans_traj[seq_id] = MotionTrajectory(robot, ik_joints, tr_path, element_id=seq_id, tag=tag_msg, planner_parameters=kwargs)
         # add printed element to the built obstacles
         if seq_id < len(print_trajs):
             built_obstacles.append(element_bodies[tuple(print_trajs[seq_id][0].element)])
