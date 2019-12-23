@@ -14,10 +14,10 @@ def extrusion_problem_path():
     # problem = 'long_beam_test'
     # problem = 'extreme_beam_test'
     # problem = 'topopt-101_tiny'
-    # problem = 'topopt-205_rotated'
     # problem = 'klein_bottle_trail_S2'
     # problem = 'klein_bottle_trail'
-    problem = 'klein_bottle_S1.5'
+    # problem = 'klein_bottle_S1.5'
+    problem = 'topopt-205_rotated_S1.35'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -34,6 +34,7 @@ def extrusion_problem_path():
         'klein_bottle_trail' : 'klein_bottle_trail.json',
         'klein_bottle_trail_S2' : 'klein_bottle_trail_S2.json',
         'klein_bottle_S1.5' : 'klein_bottle_S1.5.json',
+        'topopt-205_rotated_S1.35' : 'topopt-205_rotated_S1.35.json',
     }
     EXTRUSION_SEQ_FILENAMES = {
         'four-frame': 'four-frame_solution_regression-z.json',
@@ -47,6 +48,7 @@ def extrusion_problem_path():
         'klein_bottle_trail' : 'klein_bottle_trail_solution_regression-dijkstra.json',
         'klein_bottle_trail_S2' : 'klein_bottle_trail_S2_solution_regression-dijkstra.json',
         'klein_bottle_S1.5' : 'klein_bottle_S1.5_solution_regression-dijkstra.json',
+        'topopt-205_rotated_S1.35' : 'topopt-205_rotated_S1.35_solution_regression-dijkstra.json',
     }
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES

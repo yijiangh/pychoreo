@@ -99,18 +99,18 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
-    sample_time = 60
-    sparse_time_out = 1 # 900
+    sample_time = 60 * 3
+    sparse_time_out = 60 * 90 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
-    roll_disc = 60 # 60
-    pitch_disc = 60
+    roll_disc = 100 # 60
+    pitch_disc = 100
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     approach_distance = 0.025 # ! a bug when 0.03?
     linear_step_size = 0.0009 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.002 # 0.003 # m
+    shrink = 0.01 # 0.003 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -327,7 +327,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.1 # 0.01
-    shrink = 0.006 # m
+    shrink = 0.00 # m
     # radius = 2e-6
     radius = 1e-3
     RRT_RESTARTS = 5

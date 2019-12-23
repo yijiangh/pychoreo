@@ -145,10 +145,12 @@ def save_feasible_ee_maps(e_fmaps, disc_maps, save_dir, overwrite=True, shape_fi
     data['write_time'] = str(datetime.datetime.now())
 
     ee_fdir_maps_data = []
+    cnt = 0
     for element, fmap in e_fmaps.items():
         # save the feasible dir's indices
-        ee_fdir_maps_data.append({'element':element, 'fmap_ids':np.nonzero(np.array(fmap))[0].tolist(),
+        ee_fdir_maps_data.append({'seq_id':cnt, 'element':element, 'fmap_ids':np.nonzero(np.array(fmap))[0].tolist(),
                                   'roll_disc':disc_maps[element][0], 'pitch_disc':disc_maps[element][1]})
+        cnt += 1
     data['ee_fdir_maps'] = ee_fdir_maps_data
 
     full_save_path = os.path.join(save_dir, '{}_pruned_ee_dir_result_{}.json'.format(file_name,  '_'+data['write_time'] if not overwrite else ''))
