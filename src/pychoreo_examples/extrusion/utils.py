@@ -8,6 +8,7 @@ from copy import copy
 from collections import defaultdict
 from itertools import product
 import numpy as np
+from termcolor import cprint
 
 ##################################################
 
@@ -48,8 +49,10 @@ def extrusion_direction_routing(element_sequence, elements, node_points, grounde
         current_node_neighbors[n1].add(e)
         current_node_neighbors[n2].add(e)
 
-        if len(current_node_neighbors[n2]) == 1 and len(current_node_neighbors[n1]) > 1:
+        if len(current_node_neighbors[n2]) > 1 and len(current_node_neighbors[n1]) == 1:
+            # n1 is newly created, n2 connected
             reverse_flags[e] = True
+            cprint('Routing {}:{}, forced direction flipped.'.format(seq_id, e), 'yellow')
         else:
             # if grounded, always start with the grounded node
             if n1 in grounded_node_ids or n2 in grounded_node_ids:
@@ -58,9 +61,11 @@ def extrusion_direction_routing(element_sequence, elements, node_points, grounde
             else:
                 if heuristic == 'max_valence' and len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]) \
                     and len(current_node_neighbors[n2]) > 1:
+                    cprint('Routing {}:{}, direction flipped by valence heuristic'.format(seq_id, e), 'green')
                 # prefer starting with the node with a larger valence
                     reverse_flags[e] = True
                 elif heuristic == 'z' and node_points[n1][2] > node_points[n2][2] \
                     and len(current_node_neighbors[n2]) > 1:
+                    cprint('Routing {}:{} direction flipped by z heuristic'.format(seq_id, e), 'green')
                     reverse_flags[e] = True
     return reverse_flags

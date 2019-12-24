@@ -100,22 +100,24 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
 # @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
     sample_time = 60 * 3
-    sparse_time_out = 60 * 90 # 900
+    sparse_time_out = 60 * 10 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
-    roll_disc = 100 # 60
-    pitch_disc = 100
+    roll_disc = 30 # 60
+    pitch_disc = 30
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     approach_distance = 0.025 # ! a bug when 0.03?
-    linear_step_size = 0.0009 # m
+    # linear_step_size = 0.0009 # m
+    linear_step_size = 0.01 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.005 # 0.003 # m
+    shrink = 0.01 # 0.003 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
     MAX_DISTANCE = 0.01 # 0.01
     routing_heuristic = 'z' # 'max_valence'
+    max_attempts = 3
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -225,7 +227,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             approach_distance=approach_distance, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
             self_collisions=True, disabled_collisions=disabled_self_collisions,
             obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
-            reverse_flags=reverse_flags, verbose=True, max_attempts=5)
+            reverse_flags=reverse_flags, verbose=True, max_attempts=max_attempts)
 
         here = os.path.dirname(__file__)
         save_dir = os.path.join(here, 'test_data')
