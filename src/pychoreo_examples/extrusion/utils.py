@@ -47,16 +47,20 @@ def extrusion_direction_routing(element_sequence, elements, node_points, grounde
         n1, n2 = e
         current_node_neighbors[n1].add(e)
         current_node_neighbors[n2].add(e)
-        # if grounded, always start with the grounded node
-        if n1 in grounded_node_ids or n2 in grounded_node_ids:
-            if n2 in grounded_node_ids:
-                reverse_flags[e] = True
+
+        if len(current_node_neighbors[n2]) == 1 and len(current_node_neighbors[n1]) > 1:
+            reverse_flags[e] = True
         else:
-            if heuristic == 'max_valence' and len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]) \
-                and len(current_node_neighbors[n2]) > 1:
-            # prefer starting with the node with a larger valence
-                reverse_flags[e] = True
-            elif heuristic == 'z' and node_points[n1][2] > node_points[n2][2] \
-                and len(current_node_neighbors[n2]) > 1:
-                reverse_flags[e] = True
+            # if grounded, always start with the grounded node
+            if n1 in grounded_node_ids or n2 in grounded_node_ids:
+                if n2 in grounded_node_ids:
+                    reverse_flags[e] = True
+            else:
+                if heuristic == 'max_valence' and len(current_node_neighbors[n1]) < len(current_node_neighbors[n2]) \
+                    and len(current_node_neighbors[n2]) > 1:
+                # prefer starting with the node with a larger valence
+                    reverse_flags[e] = True
+                elif heuristic == 'z' and node_points[n1][2] > node_points[n2][2] \
+                    and len(current_node_neighbors[n2]) > 1:
+                    reverse_flags[e] = True
     return reverse_flags
