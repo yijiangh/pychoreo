@@ -110,7 +110,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
     linear_step_size = 0.0009 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.01 # 0.003 # m
+    shrink = 0.005 # 0.003 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -225,7 +225,7 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
             approach_distance=approach_distance, linear_step_size=linear_step_size, tool_from_root=tool_from_root,
             self_collisions=True, disabled_collisions=disabled_self_collisions,
             obstacles=[workspace], extra_disabled_collisions=extra_disabled_collisions,
-            reverse_flags=reverse_flags, verbose=True)
+            reverse_flags=reverse_flags, verbose=True, max_attempts=5)
 
         here = os.path.dirname(__file__)
         save_dir = os.path.join(here, 'test_data')
@@ -327,12 +327,12 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.1 # 0.01
-    shrink = 0.00 # m
+    shrink = 0.003 # m
     # radius = 2e-6
     radius = 1e-3
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
-    SMOOTH = 30
+    SMOOTH = 40
     MAX_DISTANCE = 0.00
     resolve_all = False
     return2idle = True

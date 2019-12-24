@@ -215,7 +215,7 @@ def build_extrusion_cartesian_process_sequence(
             elif extrusion_tag == 'create':
                 for i in range(domain_size):
                     angle_to_element = angle_between(element_dir, get_ee_pointing_direction(ee_pose_map_fn(i)))
-                    create_angle = 70.0
+                    create_angle = 90.0
                     if angle_to_element < (1 - create_angle/180.0) * np.pi:
                         ee_fmap_from_element[element][i] = 0
 
@@ -226,8 +226,8 @@ def build_extrusion_cartesian_process_sequence(
                                                                  obstacles=obstacles,
                                                                  tool_from_root=tool_from_root,
                                                                  check_ik=True, sample_ik_fn=sample_ik_fn, collision_fn=collision_fn,
-                                                                 sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
-                                                                #  sub_process_ids=[(1,[])], max_attempts=max_attempts,
+                                                                #  sub_process_ids=[(1,[0, int(len(full_path_pts[1])/2.0), len(full_path_pts[1])-1])], max_attempts=max_attempts,
+                                                                 sub_process_ids=[(1,[])], max_attempts=max_attempts,
                                                                  diagnosis=diagnosis)
 
                 cprint('Computed ee maps: {} / {}x{}'.format(sum(ee_fmap_from_element[element]),
