@@ -95,23 +95,23 @@ def build_extrusion_cartesian_process(elements, node_points, robot, sample_ik_fn
     return cart_traj_dict
 
 @pytest.mark.extrusion
-@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_data, extrusion_end_effector, solve_method):
-    sample_time = 60 * 3
-    sparse_time_out = 60 * 10 # 900
+    sample_time = 10
+    sparse_time_out = 3 # 900
     # roll_disc = 60 # 60
     # pitch_disc = 60
-    roll_disc = 30 # 60
-    pitch_disc = 30
+    roll_disc = 10 # 60
+    pitch_disc = 10
     yaw_sample_size = 5 if solve_method == 'ladder_graph' else INF
     approach_distance = 0.025 # ! a bug when 0.03?
     # linear_step_size = 0.0009 # m
     linear_step_size = 0.01 # m
     jt_res = 0.1 # 0.01
     radius = 1e-3 # 0.002
-    shrink = 0.01 # 0.003 # m
+    shrink = 0.005 # 0.003 # m
     # RRT_RESTARTS = 5
     # RRT_ITERATIONS = 40
     SMOOTH = 30
@@ -329,17 +329,20 @@ def test_extrusion_ladder_graph(viewer, extrusion_problem_path, extrusion_robot_
 @pytest.mark.extrusion_resolve_trans
 def test_resolve_trans(viewer, extrusion_problem_path, extrusion_robot_data):
     jt_res = 0.1 # 0.01
-    shrink = 0.003 # m
+    shrink = 0.00 # m
     # radius = 2e-6
     radius = 1e-3
     RRT_RESTARTS = 5
     RRT_ITERATIONS = 40
-    SMOOTH = 40
-    MAX_DISTANCE = 0.00
-    resolve_all = False
+    SMOOTH = 60
+    MAX_DISTANCE = 0.002
+    resolve_all = True
     return2idle = True
     prescribed_resolve_ids = []
+
     # prescribed_resolve_ids = [0, 1, 2, 14, 15, 26, 41, 42, 45, 46]
+    # prescribed_resolve_ids = [1, 2, 3, 4, 6, 9, 10, 12, 13, 15, 17, 18, 20, 21]
+    # prescribed_resolve_ids = [1, 2, 3, 4, 6, 9, 10, 12, 15, 21]
     partial_process = False
 
     # * create robot and pb environment

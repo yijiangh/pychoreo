@@ -1,5 +1,6 @@
 import warnings
 import time
+from termcolor import cprint
 from pybullet_planning import WorldSaver
 from pybullet_planning import joints_from_names, set_joint_positions, wait_for_user
 
@@ -10,7 +11,8 @@ from pychoreo.cartesian_planner.dag_search import DAGSearch
 from pychoreo.cartesian_planner.postprocessing import divide_list_chunks
 from pychoreo.process_model.trajectory import Trajectory
 
-def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, start_conf=None, check_collision=True, verbose=False, viz_inspect=False, warning_pause=True):
+def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, start_conf=None, check_collision=True, verbose=False, \
+    viz_inspect=False, warning_pause=True):
     world_saver = WorldSaver()
     st_time = time.time()
     if verbose: print('Start building ladder graph.')
@@ -25,6 +27,7 @@ def solve_ladder_graph_from_cartesian_process_list(cart_proc_list, start_conf=No
             if verbose: print('#{}-{} #{} pose families formed.'.format(cp_id, cart_proc, vertical_subgraph_cnt))
         else:
             warnings.warn('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc))
+            cprint('Warning: cart proce #{}-{} does not have any valid joint sols to form rungs!'.format(cp_id, cart_proc), 'red')
             if warning_pause : wait_for_user()
         # end loop candidates poses for process
     # end loop all processes

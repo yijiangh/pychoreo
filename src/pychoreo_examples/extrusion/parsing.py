@@ -107,7 +107,10 @@ def create_elements_bodies(node_points, elements, radius=0.0015, shrink=0.002, c
 def parse_saved_trajectory(file_path):
     with open(file_path, 'r')  as f:
         data = json.load(f)
-    print('file name: {} | write_time: {} | '.format(data['file_name'], data['write_time']))
+    try:
+        print('file name: {} | write_time: {} | '.format(data['file_name'], data['write_time']))
+    except:
+        pass
     full_traj = []
     for proc_traj_data in data['trajectory']:
         proc_traj_recon = []

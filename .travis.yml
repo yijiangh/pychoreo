@@ -44,6 +44,10 @@ install:
 #   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dep1 dep2 ...
 
 script:
+# The new coverage version has some breaking changes and is not backwards
+# compatible. See z4r/python-coveralls#73
+  - pip install coverage==4.5.4
+  - pip install python-coveralls
   - invoke test
 # - if [[ "$TRAVIS_PYTHON_VERSION" == "3.6" ]]; then
 #     invoke docs;

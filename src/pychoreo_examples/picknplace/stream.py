@@ -1,7 +1,8 @@
 import random
 import numpy as np
 
-from pybullet_planning import Pose, Point, Euler, unit_pose, invert, multiply, interpolate_poses_by_num_steps
+from pybullet_planning import Pose, Point, Euler, unit_pose, invert, multiply, interpolate_poses_by_num_steps, \
+    interpolate_poses
 from pybullet_planning import sample_tool_ik
 from pybullet_planning import Attachment
 from pybullet_planning import joints_from_names, link_from_name, has_link, get_collision_fn, get_disabled_collisions, \
@@ -52,10 +53,9 @@ def get_picknplace_ee_pose_compose_fn(ee_pose_interp_fn, **kwargs):
 def build_picknplace_cartesian_process_seq(
         element_sequence, elements,
         robot, ik_joint_names, attach_link, sample_ik_fn,
-        num_steps=5, ee_attachs=[],
-        self_collisions=True, disabled_collisions={},
+        ee_attachs=[], self_collisions=True, disabled_collisions={},
         obstacles=[], extra_disabled_collisions={},
-        tool_from_root=None, viz_step=False, pick_from_same_rack=True):
+        tool_from_root=None, viz_step=False, pick_from_same_rack=True, **kwargs):
 
     # load EE body, for debugging purpose
     ik_joints = joints_from_names(robot, ik_joint_names)
@@ -85,7 +85,8 @@ def build_picknplace_cartesian_process_seq(
         unit_geo = elements[e_id].unit_geometries[0]
 
         grasp_enum_gen_fn = get_enumerate_picknplace_generator(unit_geo)
-        pnp_compose_fn = get_picknplace_ee_pose_compose_fn(interpolate_poses_by_num_steps, num_steps=num_steps)
+        # pnp_compose_fn = get_picknplace_ee_pose_compose_fn(interpolate_poses_by_num_steps, num_steps=num_steps)
+        pnp_compose_fn = get_picknplace_ee_pose_compose_fn(interpolate_poses, **kwargs)
         pose_gen_fn = CartesianPoseGenFn(grasp_enum_gen_fn, pnp_compose_fn)
 
         # build collision_fn

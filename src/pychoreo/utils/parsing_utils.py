@@ -6,11 +6,7 @@ from termcolor import cprint
 
 from pybullet_planning import is_connected
 
-def export_trajectory(save_dir, trajs, ee_link_name=None, overwrite=True, shape_file_path='',
-    indent=None, include_robot_data=True, include_link_path=True, file_tag='', verbose=False):
-    if include_robot_data and include_link_path:
-        assert is_connected(), 'needs to be connected to a pybullet client to get robot/FK data'
-
+def get_saved_file_path(save_dir, overwrite=True, shape_file_path='', file_tag=''):
     if os.path.exists(shape_file_path):
         with open(shape_file_path, 'r') as f:
             shape_data = json.loads(f.read())
@@ -22,12 +18,19 @@ def export_trajectory(save_dir, trajs, ee_link_name=None, overwrite=True, shape_
         file_name = 'pychoreo_result'
         overwrite = False
 
+    full_save_path = os.path.join(save_dir, '{}_result_{}{}.json'.format(file_name, file_tag, '_'+str(datetime.datetime.now()) if not overwrite else ''))
+    return full_save_path
+
+def export_trajectory(save_dir, trajs, ee_link_name=None, overwrite=True, shape_file_path='', assembly_type='',
+    indent=None, include_robot_data=True, include_link_path=True, file_tag='', verbose=False):
+    if include_robot_data and include_link_path:
+        assert is_connected(), 'needs to be connected to a pybullet client to get robot/FK data'
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
     data = OrderedDict()
-    data['assembly_type'] = 'extrusion'
-    data['file_name'] = file_name
+    data['assembly_type'] = assembly_type
     data['write_time'] = str(datetime.datetime.now())
 
     data['trajectory'] = []
@@ -40,7 +43,8 @@ def export_trajectory(save_dir, trajs, ee_link_name=None, overwrite=True, shape_
             traj_data.append(sp_traj.to_data(include_robot_data=True, include_link_path=include_link_path))
         data['trajectory'].append(traj_data)
 
-    full_save_path = os.path.join(save_dir, '{}_result_{}{}.json'.format(file_name, file_tag, '_'+data['write_time'] if not overwrite else ''))
+    full_save_path = get_saved_file_path(save_dir, overwrite=overwrite, shape_file_path=shape_file_path, file_tag=file_tag)
+
     with open(full_save_path, 'w') as f:
         json.dump(data, f, indent=indent)
     if verbose:

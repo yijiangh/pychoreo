@@ -38,16 +38,20 @@ def load_end_effector(ee_urdf_path):
     return ee
 
 @pytest.mark.pnp
-# @pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
+@pytest.mark.parametrize('solve_method', [('sparse_ladder_graph')])
 # @pytest.mark.parametrize('solve_method', [('ladder_graph')])
-@pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
+# @pytest.mark.parametrize('solve_method', [('ladder_graph'), ('sparse_ladder_graph')])
 def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_robot_data,
     picknplace_end_effector, picknplace_tcp_def, solve_method):
 
-    step_num = 5
+    # step_num = 5
+    pos_step_size = 0.009
     sample_time = 5
     sparse_time_out = 2
     jt_res = 0.1
+
+    SMOOTH = 30
+    MAX_DISTANCE = 0.0
 
     # * create robot and pb environment
     (robot_urdf, base_link_name, tool_root_link_name, ee_link_name, ik_joint_names, disabled_self_collision_link_names), \
@@ -116,7 +120,7 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
 
     # visualize goal pose
     if has_gui():
-        viz_len = 0.003
+        # viz_len = 0.003
         with WorldSaver():
             for e_id in element_seq:
                 element = elements[e_id]
@@ -142,11 +146,11 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
     cart_process_seq = build_picknplace_cartesian_process_seq(
         element_seq, elements,
         robot, ik_joint_names, root_link, sample_ik_fn,
-        num_steps=step_num, ee_attachs=[ee_attach],
-        self_collisions=True, disabled_collisions=disabled_self_collisions,
+        ee_attachs=[ee_attach], self_collisions=True, disabled_collisions=disabled_self_collisions,
         obstacles=[workspace],extra_disabled_collisions=extra_disabled_collisions,
-        tool_from_root=invert(root_from_tcp), viz_step=False, pick_from_same_rack=True)
-
+        tool_from_root=invert(root_from_tcp), viz_step=False, pick_from_same_rack=True,
+        pos_step_size=pos_step_size) #, ori_step_size=np.pi/16)
+    # num_steps=step_num,
     # specifically for UR5, because of its wide joint range, we need to apply joint value snapping
     for cp in cart_process_seq:
         cp.target_conf = robot_start_conf
@@ -193,7 +197,8 @@ def test_picknplace_ladder_graph(viewer, picknplace_problem_path, picknplace_rob
                                                                     disabled_collisions=disabled_self_collisions,
                                                                     extra_disabled_collisions=extra_disabled_collisions,
                                                                     obstacles=[workspace], return2idle=return2idle,
-                                                                    resolutions=[jt_res]*len(ik_joints))
+                                                                    resolutions=[jt_res]*len(ik_joints),
+                                                                    smooth=SMOOTH, max_distance=MAX_DISTANCE)
 
     # * weave the Cartesian and transition processses together
     for cp_id, print_trajs in enumerate(full_trajs):

@@ -9,7 +9,7 @@ import pychoreo_examples
 @pytest.fixture
 def extrusion_problem_path():
     # * extrusion problem here
-    # problem = 'four-frame'
+    problem = 'four-frame'
     # problem = 'extrusion_exp_L75.0'
     # problem = 'long_beam_test'
     # problem = 'extreme_beam_test'
@@ -18,7 +18,8 @@ def extrusion_problem_path():
     # problem = 'klein_bottle_trail'
     # problem = 'klein_bottle_S1.5'
     # problem = 'topopt-205_rotated_S1.35'
-    problem = 'compas_fea_beam_tree_M_simp'
+    # problem = 'compas_fea_beam_tree_M_simp'
+    # problem = 'compas_fea_beam_tree_S_simp'
 
     EXTRUSION_DIRECTORY = pychoreo_examples.get_data('assembly_instances/extrusion')
     EXTRUSION_FILENAMES = {
@@ -37,6 +38,7 @@ def extrusion_problem_path():
         'klein_bottle_S1.5' : 'klein_bottle_S1.5.json',
         'topopt-205_rotated_S1.35' : 'topopt-205_rotated_S1.35.json',
         'compas_fea_beam_tree_M_simp' : 'compas_fea_beam_tree_M_simp.json',
+        'compas_fea_beam_tree_S_simp' : 'compas_fea_beam_tree_S_simp.json',
     }
     EXTRUSION_SEQ_FILENAMES = {
         'four-frame': 'four-frame_solution_regression-z.json',
@@ -52,6 +54,7 @@ def extrusion_problem_path():
         'klein_bottle_S1.5' : 'klein_bottle_S1.5_solution_regression-dijkstra.json',
         'topopt-205_rotated_S1.35' : 'topopt-205_rotated_S1.35_solution_regression-dijkstra.json',
         'compas_fea_beam_tree_M_simp' : 'compas_fea_beam_tree_M_simp_solution_regression-dijkstra.json',
+        'compas_fea_beam_tree_S_simp' : 'compas_fea_beam_tree_S_simp_solution_regression-dijkstra.json',
     }
     here = os.path.dirname(__file__)
     assert problem in EXTRUSION_FILENAMES and problem in EXTRUSION_SEQ_FILENAMES

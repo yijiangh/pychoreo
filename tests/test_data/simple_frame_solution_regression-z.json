@@ -1,9 +1,14 @@
 {
   "algorithm": "regression",
+  "approach_distance": 0.025,
   "heuristic": "z",
+  "max_backtrack": 0,
+  "max_rotation": 9.658479195646576e-05,
+  "max_translation": 4.537281657381992e-06,
+  "min_remaining": 0,
   "num_elements": 19,
-  "num_evaluated": 19,
-  "num_remaining": 0,
+  "num_evaluated": 20,
+  "num_stiffness_violation": 0,
   "plan": [
     [
       1,
@@ -14,28 +19,12 @@
       7
     ],
     [
-      0,
-      5
-    ],
-    [
       2,
       4
     ],
     [
-      4,
-      7
-    ],
-    [
-      5,
-      6
-    ],
-    [
-      4,
-      6
-    ],
-    [
-      6,
-      7
+      0,
+      5
     ],
     [
       5,
@@ -43,15 +32,19 @@
     ],
     [
       6,
-      10
+      7
     ],
     [
       4,
-      8
+      6
     ],
     [
       5,
-      9
+      6
+    ],
+    [
+      4,
+      7
     ],
     [
       7,
@@ -62,7 +55,15 @@
       9
     ],
     [
-      9,
+      5,
+      9
+    ],
+    [
+      4,
+      8
+    ],
+    [
+      6,
       10
     ],
     [
@@ -71,22 +72,29 @@
     ],
     [
       8,
-      10
-    ],
-    [
-      8,
       11
     ],
     [
       9,
       11
+    ],
+    [
+      8,
+      10
+    ],
+    [
+      9,
+      10
     ]
   ],
   "plan_extrusions": true,
   "problem": "simple_frame",
-  "runtime": 28.767921686172485,
+  "radius": 0.001,
+  "runtime": 6.322967767715454,
+  "shrink": 0.003,
+  "step_size": 0.001,
   "use_collisions": true,
   "use_stiffness": true,
   "valid": true,
-  "write_time": "2019-12-05 08:57:40.654388"
+  "write_time": "2020-01-04 07:12:16.052025"
 }
